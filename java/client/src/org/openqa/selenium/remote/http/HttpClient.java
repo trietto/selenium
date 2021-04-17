@@ -17,32 +17,79 @@
 
 package org.openqa.selenium.remote.http;
 
-import java.io.IOException;
+import org.openqa.selenium.internal.Require;
+
+import java.io.Closeable;
 import java.net.URL;
+import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
+
+import static org.openqa.selenium.remote.http.ClientConfig.defaultConfig;
 
 /**
  * Defines a simple client for making HTTP requests.
  */
-public interface HttpClient {
+public interface HttpClient extends Closeable, HttpHandler {
 
-  /**
-   * Executes the given request.
-   *
-   * @param request the request to execute.
-   * @param followRedirects whether to automatically follow redirects.
-   * @return the final response.
-   * @throws IOException if an I/O error occurs.
-   */
-  HttpResponse execute(HttpRequest request, boolean followRedirects) throws IOException;
+  WebSocket openSocket(HttpRequest request, WebSocket.Listener listener);
 
-  /**
-   * Creates HttpClient instances.
-   */
+  default void close() {}
+
   interface Factory {
 
     /**
-     * Creates a HTTP client that will send requests to the given URL.
+     * Creates a new instance of {@link HttpClient.Factory} with the given name. It uses
+     * {@link ServiceLoader} to find all available implementations and selects the class
+     * that has an {@link @HttpClientName} annotation with the given name as the value.
+     *
+     * @throws IllegalArgumentException if no implementation with the given name can be found
+     * @throws IllegalStateException if more than one implementation with the given name can be found
      */
-    HttpClient createClient(URL url);
+    static Factory create(String name) {
+      ServiceLoader<HttpClient.Factory> loader = ServiceLoader.load(HttpClient.Factory.class);
+      Set<Factory> factories = StreamSupport.stream(loader.spliterator(), true)
+          .filter(p -> p.getClass().isAnnotationPresent(HttpClientName.class))
+          .filter(p -> name.equals(p.getClass().getAnnotation(HttpClientName.class).value()))
+          .collect(Collectors.toSet());
+      if (factories.isEmpty()) {
+        throw new IllegalArgumentException("Unknown HttpClient factory " + name);
+      }
+      if (factories.size() > 1) {
+        throw new IllegalStateException(String.format(
+            "There are multiple HttpClient factories by name %s, check your classpath", name));
+      }
+      return factories.iterator().next();
+    }
+
+    /**
+     * Use the {@code webdriver.http.factory} system property to determine which implementation of
+     * {@link HttpClient.Factory} should be used.
+     *
+     * {@see create}
+     */
+    static Factory createDefault() {
+      return create(System.getProperty("webdriver.http.factory", "netty"));
+    }
+
+    /**
+     * Creates a HTTP client that will send requests to the given URL.
+     *
+     * @param url URL The base URL for requests.
+     */
+    default HttpClient createClient(URL url) {
+      Require.nonNull("URL to use as base URL", url);
+      return createClient(defaultConfig().baseUrl(url));
+    }
+
+    HttpClient createClient(ClientConfig config);
+
+    /**
+     * Closes idle clients.
+     */
+    default void cleanupIdleClients() {
+      // do nothing by default.
+    }
   }
 }

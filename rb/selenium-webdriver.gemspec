@@ -1,34 +1,52 @@
-# -*- encoding: utf-8 -*-
+# frozen_string_literal: true
 
 root = File.expand_path(File.dirname(__FILE__))
-if root != Dir.pwd
-  raise "cwd must be #{root} when reading gemspec"
-end
+raise "cwd must be #{root} when reading gemspec" if root != Dir.pwd
+
+$LOAD_PATH.push(File.expand_path('lib', root))
+require 'selenium/webdriver/version'
 
 Gem::Specification.new do |s|
-  s.name    = "selenium-webdriver"
-  s.version = "2.48.0.dev"
+  s.name = 'selenium-webdriver'
+  s.version = Selenium::WebDriver::VERSION
 
-  s.authors     = ["Jari Bakken"]
-  s.email       = "jari.bakken@gmail.com"
-  s.description = "WebDriver is a tool for writing automated tests of websites. It aims to mimic the behaviour of a real user, and as such interacts with the HTML of the application."
-  s.summary     = "The next generation developer focused tool for automated testing of webapps"
-  s.homepage    = "https://github.com/seleniumhq/selenium"
-  s.licenses    = ["Apache"]
+  s.authors = ['Alex Rodionov', 'Titus Fortner', 'Thomas Walpole']
+  s.email = %w[p0deje@gmail.com titusfortner@gmail.com twalpole@gmail.com]
 
-  s.required_rubygems_version = Gem::Requirement.new("> 1.3.1") if s.respond_to? :required_rubygems_version=
-  s.required_ruby_version     = Gem::Requirement.new(">= 1.9.2")
+  s.summary = 'Selenium is a browser automation tool for automated testing of webapps and more'
+  s.description = <<-DESCRIPTION
+    Selenium implements the W3C WebDriver protocol to automate popular browsers.
+    It aims to mimic the behaviour of a real user as it interacts with the application's HTML.
+    It's primarily intended for web application testing, but any web-based task can automated.
+  DESCRIPTION
 
-  s.files         = Dir[root + '/**/*'].reject { |e| e =~ /ruby\.iml|build\.desc/ }.map { |e| e.sub(root + '/', '') }
-  s.require_paths = ["lib"]
+  s.license = 'Apache-2.0'
+  s.homepage = 'https://selenium.dev'
+  s.metadata = {
+    'changelog_uri' => 'https://github.com/SeleniumHQ/selenium/blob/trunk/rb/CHANGES',
+    'source_code_uri' => 'https://github.com/SeleniumHQ/selenium/tree/trunk/rb'
+  }
 
-  s.add_runtime_dependency "multi_json", ["~> 1.0"]
-  s.add_runtime_dependency "rubyzip", ["~> 1.0"]
-  s.add_runtime_dependency "childprocess", ["~> 0.5"]
-  s.add_runtime_dependency "websocket", ["~> 1.0"]
+  s.required_rubygems_version = Gem::Requirement.new('> 1.3.1') if s.respond_to? :required_rubygems_version=
+  s.required_ruby_version = Gem::Requirement.new('>= 2.5')
 
-  s.add_development_dependency "rspec", ["~> 2.99.0"]
-  s.add_development_dependency "rack", ["~> 1.0"]
-  s.add_development_dependency "ci_reporter", ["~> 1.6", ">= 1.6.2"]
-  s.add_development_dependency "webmock", ["~> 1.7", ">= 1.7.5"]
+  s.files = Dir.glob('{lib/**/*}') - Dir.glob('{lib/selenium/devtools}/**/*')
+  s.require_paths = ['lib']
+
+  s.add_runtime_dependency 'childprocess', ['>= 0.5', '< 5.0']
+  s.add_runtime_dependency 'rexml', ['~> 3.2']
+  s.add_runtime_dependency 'rubyzip', ['>= 1.2.2']
+  s.add_runtime_dependency 'websocket', ['~> 1.0']
+
+  # childprocess requires ffi on windows but doesn't declare it in its dependencies
+  s.add_development_dependency 'ffi'
+  s.add_development_dependency 'rack', ['~> 2.0']
+  s.add_development_dependency 'rake'
+  s.add_development_dependency 'rspec', ['~> 3.0']
+  s.add_development_dependency 'rubocop', ['~> 1.8.0']
+  s.add_development_dependency 'rubocop-performance'
+  s.add_development_dependency 'rubocop-rspec'
+  s.add_development_dependency 'webmock', ['~> 3.5']
+  s.add_development_dependency 'webrick', ['~> 1.7']
+  s.add_development_dependency 'yard', ['~> 0.9.11']
 end

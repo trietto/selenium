@@ -17,19 +17,24 @@
 
 package org.openqa.selenium;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import org.openqa.selenium.net.HostIdentifier;
+
 import java.util.HashMap;
 import java.util.Map;
-
-import org.openqa.selenium.internal.BuildInfo;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class WebDriverException extends RuntimeException {
 
   public static final String SESSION_ID = "Session ID";
   public static final String DRIVER_INFO = "Driver info";
+  protected static final String BASE_SUPPORT_URL = "https://selenium.dev/exceptions/";
 
-  private Map<String, String> extraInfo = new HashMap<>();
+  private static final String HOST_NAME = HostIdentifier.getHostName();
+  private static final String HOST_ADDRESS = HostIdentifier.getHostAddress();
+
+  private final Map<String, String> extraInfo = new HashMap<>();
 
   public WebDriverException() {
     super();
@@ -47,38 +52,52 @@ public class WebDriverException extends RuntimeException {
     super(message, cause);
   }
 
+  /**
+   * Returns the detail message string of this exception that includes not only the original
+   * message passed to the exception constructor but also driver information, system
+   * information and extra information added by {@link #addInfo(String, String)} method.
+   *
+   * To get the original message use {@link #getRawMessage()}
+   *
+   * @return the detail message string of this exception.
+   */
   @Override
   public String getMessage() {
-    return createMessage(super.getMessage());
+    return getCause() instanceof WebDriverException
+           ? super.getMessage() : createMessage(super.getMessage());
+  }
+
+  /**
+   * Returns the simple message string of this exception.
+   *
+   * @return the simple message string of this exception.
+   *
+   * @see #getMessage()
+   */
+  public String getRawMessage() {
+    return super.getMessage();
   }
 
   private String createMessage(String originalMessageString) {
-    String supportMessage = getSupportUrl() == null ?
-        "" : "For documentation on this error, please visit: " + getSupportUrl() + "\n";
+    String supportMessage = Optional.ofNullable(getSupportUrl())
+      .map(url -> String.format("For documentation on this error, please visit: %s", url))
+      .orElse("");
 
-    return (originalMessageString == null ? "" : originalMessageString + "\n")
-        + supportMessage
-        + getBuildInformation() + "\n"
-        + getSystemInformation()
-        + getAdditionalInformation();
+    return Stream.of(
+      originalMessageString == null ? "" : originalMessageString,
+      supportMessage,
+      getBuildInformation().toString(),
+      getSystemInformation(),
+      getAdditionalInformation()
+    ).filter(s -> !(s == null || s.equals(""))).collect(Collectors.joining("\n"));
   }
 
   public String getSystemInformation() {
-    String host = "N/A";
-    String ip   = "N/A";
-
-    try{
-      host = InetAddress.getLocalHost().getHostName();
-      ip   = InetAddress.getLocalHost().getHostAddress();
-    } catch (UnknownHostException throw_away) {}
-
-    return String.format("System info: host: '%s', ip: '%s', os.name: '%s', os.arch: '%s', os.version: '%s', java.version: '%s'",
-      host,
-      ip,
-      System.getProperty("os.name"),
-      System.getProperty("os.arch"),
-      System.getProperty("os.version"),
-      System.getProperty("java.version"));
+    return String.format(
+      "System info: host: '%s', ip: '%s', os.name: '%s', os.arch: '%s', os.version: '%s', java.version: '%s'",
+      HOST_NAME, HOST_ADDRESS,
+      System.getProperty("os.name"), System.getProperty("os.arch"),
+      System.getProperty("os.version"), System.getProperty("java.version"));
   }
 
   public String getSupportUrl() {
@@ -90,15 +109,14 @@ public class WebDriverException extends RuntimeException {
   }
 
   public static String getDriverName(StackTraceElement[] stackTraceElements) {
-    String driverName = "unknown";
-    for (StackTraceElement e : stackTraceElements) {
-      if (e.getClassName().endsWith("Driver")) {
+    return Stream.of(stackTraceElements)
+      .filter(e -> e.getClassName().endsWith("Driver"))
+      .map(e -> {
         String[] bits = e.getClassName().split("\\.");
-        driverName = bits[bits.length - 1];
-      }
-    }
-
-    return driverName;
+        return bits[bits.length - 1];
+      })
+      .reduce((first, last) -> last)
+      .orElse("unknown");
   }
 
   public void addInfo(String key, String value) {
@@ -106,18 +124,13 @@ public class WebDriverException extends RuntimeException {
   }
 
   public String getAdditionalInformation() {
-    if (! extraInfo.containsKey(DRIVER_INFO)) {
-      extraInfo.put(DRIVER_INFO, "driver.version: " + getDriverName(getStackTrace()));
-    }
+    extraInfo.computeIfAbsent(
+      DRIVER_INFO, key -> "driver.version: " + getDriverName(getStackTrace()));
 
-    String result = "";
-    for (Map.Entry<String, String> entry : extraInfo.entrySet()) {
-      if (entry.getValue() != null && entry.getValue().startsWith(entry.getKey())) {
-        result += "\n" + entry.getValue();
-      } else {
-        result += "\n" + entry.getKey() + ": " + entry.getValue();
-      }
-    }
-    return result;
+    return extraInfo.entrySet().stream()
+      .map(entry -> entry.getValue() != null && entry.getValue().startsWith(entry.getKey())
+                    ? entry.getValue()
+                    : entry.getKey() + ": " + entry.getValue())
+      .collect(Collectors.joining("\n"));
   }
 }

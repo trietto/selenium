@@ -17,10 +17,9 @@
 
 package org.openqa.selenium.logging;
 
-import static com.google.common.base.Strings.isNullOrEmpty;
-
-import com.google.common.collect.ImmutableMap;
-
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Level;
 
 public class LogLevelMapping {
@@ -30,7 +29,7 @@ public class LogLevelMapping {
    */
   private static final String DEBUG = "DEBUG";
 
-  private static ImmutableMap<Integer, Level> levelMap;
+  private static final Map<Integer, Level> levelMap;
 
   static {
     Level[] supportedLevels = new Level[] {
@@ -41,15 +40,18 @@ public class LogLevelMapping {
       Level.SEVERE,
       Level.OFF
     };
-    ImmutableMap.Builder<Integer, Level> builder = ImmutableMap.builder();
+    Map<Integer, Level> builder = new HashMap<>();
     for (Level level : supportedLevels) {
       builder.put(level.intValue(), level);
     }
-    levelMap = builder.build();
+    levelMap = Collections.unmodifiableMap(builder);
   }
 
   /**
    * Normalizes the given level to one of those supported by Selenium.
+   *
+   * @param level log level to normalize
+   * @return the selenium supported corresponding log level
    */
   public static Level normalize(Level level) {
     if (levelMap.containsKey(level.intValue())) {
@@ -67,6 +69,9 @@ public class LogLevelMapping {
 
   /**
    * Converts the JDK level to a name supported by Selenium.
+   *
+   * @param level log level to get the string name of
+   * @return string name representation of the level selenium supports
    */
   public static String getName(Level level) {
     Level normalized = normalize(level);
@@ -74,7 +79,7 @@ public class LogLevelMapping {
   }
 
   public static Level toLevel(String logLevelName) {
-    if (isNullOrEmpty(logLevelName)) {
+    if (logLevelName == null || "".equals(logLevelName)) {
       // Default the log level to info.
       return Level.INFO;
     }

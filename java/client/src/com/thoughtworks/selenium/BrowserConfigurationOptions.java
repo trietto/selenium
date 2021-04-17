@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 package com.thoughtworks.selenium;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Contains parameters for a single Selenium browser session.
@@ -66,17 +66,9 @@ public class BrowserConfigurationOptions {
    * @return String with the above format.
    */
   public String serialize() {
-    StringBuilder sb = new StringBuilder();
-    boolean first = true;
-    for (String key : options.keySet()) {
-      if (first) {
-        first = false;
-      } else {
-        sb.append(';');
-      }
-      sb.append(key).append('=').append(options.get(key));
-    }
-    return sb.toString();
+    return options.entrySet().stream()
+      .map(entry -> entry.getKey() + "=" + entry.getValue())
+      .collect(Collectors.joining(";"));
   }
 
   /**
@@ -102,10 +94,7 @@ public class BrowserConfigurationOptions {
    * @return true if {@code SINGLE_WINDOW} is set.
    */
   protected boolean isSingleWindow() {
-    if (isSet(SINGLE_WINDOW)) {
-      return true;
-    }
-    return false;
+    return isSet(SINGLE_WINDOW);
   }
 
   /**
@@ -114,14 +103,13 @@ public class BrowserConfigurationOptions {
    * @return true if {@code MULTI_WINDOW} is set.
    */
   protected boolean isMultiWindow() {
-    if (isSet(MULTI_WINDOW)) {
-      return true;
-    }
-    return false;
+    return isSet(MULTI_WINDOW);
   }
 
   /**
    * Sets {@code SINGLE_WINDOW} and unsets {@code MULTI_WINDOW}.
+   *
+   * @return this / self
    */
   public BrowserConfigurationOptions setSingleWindow() {
     synchronized (options) {
@@ -133,6 +121,8 @@ public class BrowserConfigurationOptions {
 
   /**
    * Sets {@code MULTI_WINDOW} and unsets {@code SINGLE_WINDOW}
+   *
+   * @return this / self
    */
   public BrowserConfigurationOptions setMultiWindow() {
     synchronized (options) {
@@ -151,6 +141,7 @@ public class BrowserConfigurationOptions {
    * Sets the full path for the browser executable.
    *
    * @param executablePath the full path for the browser executable.
+   * @return this / self
    */
   public BrowserConfigurationOptions setBrowserExecutablePath(String executablePath) {
     put(BROWSER_EXECUTABLE_PATH, executablePath);
@@ -185,7 +176,8 @@ public class BrowserConfigurationOptions {
    * Note that absolutely no publication nor synchronization of these hard-coded strings such as
    * "HTA" has yet been done. Use at your own risk until this is rectified.
    *
-   * @param mode
+   * @param mode - examples "HTA" or "PROXY"
+   * @return this / self
    */
   public BrowserConfigurationOptions setBrowserMode(String mode) {
     put(BROWSER_MODE, mode);
@@ -234,6 +226,7 @@ public class BrowserConfigurationOptions {
    *
    * @param key the name of the key
    * @param value the value for the key
+   * @return this / self
    */
   public BrowserConfigurationOptions set(String key, String value) {
     if (value != null) {
@@ -243,7 +236,7 @@ public class BrowserConfigurationOptions {
   }
 
   /**
-   * Returns the serialization of this object, as defined by the serialize() method.
+   * @return the serialization of this object, as defined by the serialize() method.
    */
   @Override
   public String toString() {

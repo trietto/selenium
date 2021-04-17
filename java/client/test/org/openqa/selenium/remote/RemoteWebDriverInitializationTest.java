@@ -17,91 +17,172 @@
 
 package org.openqa.selenium.remote;
 
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.doThrow;
+import static java.util.Collections.emptyMap;
+import static java.util.Collections.singletonMap;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import static org.openqa.selenium.remote.WebDriverFixture.echoCapabilities;
+import static org.openqa.selenium.remote.WebDriverFixture.exceptionResponder;
+import static org.openqa.selenium.remote.WebDriverFixture.nullResponder;
+import static org.openqa.selenium.remote.WebDriverFixture.nullValueResponder;
+import static org.openqa.selenium.remote.WebDriverFixture.valueResponder;
 
-import com.google.gson.JsonObject;
+import com.google.common.collect.ImmutableMap;
 
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.experimental.categories.Category;
+import org.mockito.ArgumentCaptor;
 import org.openqa.selenium.Capabilities;
+import org.openqa.selenium.ImmutableCapabilities;
+import org.openqa.selenium.Platform;
+import org.openqa.selenium.SessionNotCreatedException;
+import org.openqa.selenium.remote.http.ClientConfig;
+import org.openqa.selenium.remote.http.Contents;
+import org.openqa.selenium.remote.http.HttpClient;
+import org.openqa.selenium.remote.http.HttpResponse;
+import org.openqa.selenium.testing.UnitTests;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.time.Duration;
+import java.util.UUID;
 
-@RunWith(JUnit4.class)
+@Category(UnitTests.class)
 public class RemoteWebDriverInitializationTest {
-  private boolean stopClientCalled = false;
   private boolean quitCalled = false;
 
   @Test
-  public void testStopsClientIfStartClientFails() {
-    RemoteWebDriver driver = mock(RemoteWebDriver.class);
-    doThrow(new RuntimeException("Stub client that should fail")).when(driver).startClient();
-    boolean exceptionThrown = false;
-    AtomicBoolean stopCalled = new AtomicBoolean(false);
+  public void testQuitsIfStartSessionFails() {
+    assertThatExceptionOfType(RuntimeException.class)
+      .isThrownBy(() -> new BadStartSessionRemoteWebDriver(mock(CommandExecutor.class), new ImmutableCapabilities()))
+      .withMessageContaining("Stub session that should fail");
 
-    try {
-      new BadStartClientRemoteWebDriver(mock(CommandExecutor.class),
-                                        new DesiredCapabilities(),
-                                        new DesiredCapabilities(),
-                                        stopCalled);
-    } catch (RuntimeException e) {
-      assertTrue(e.getMessage().contains("Stub client that should fail"));
-
-      exceptionThrown = true;
-    }
-
-    assertTrue(exceptionThrown);
-    assertTrue(stopClientCalled);
+    assertThat(quitCalled).isTrue();
   }
 
   @Test
-  public void testQuitsIfStartSessionFails() {
-    boolean exceptionThrown = false;
-
-    try {
-      new BadStartSessionRemoteWebDriver(mock(CommandExecutor.class),
-                                         new DesiredCapabilities(),
-                                         new DesiredCapabilities());
-    } catch (RuntimeException e) {
-      assertTrue(e.getMessage().contains("Stub session that should fail"));
-
-      exceptionThrown = true;
-    }
-
-    assertTrue(exceptionThrown);
-    assertTrue(quitCalled);
+  public void constructorShouldThrowIfExecutorIsNull() {
+    assertThatExceptionOfType(IllegalArgumentException.class)
+      .isThrownBy(() -> new RemoteWebDriver((CommandExecutor) null, new ImmutableCapabilities()))
+      .withMessage("Command executor must be set");
   }
 
-  private class BadStartClientRemoteWebDriver extends RemoteWebDriver {
-    public BadStartClientRemoteWebDriver(CommandExecutor executor, Capabilities desiredCapabilities,
-                                         Capabilities requiredCapabilities, AtomicBoolean stopCalled) {
-      super(executor, desiredCapabilities, requiredCapabilities);
-    }
+  @Test
+  public void constructorShouldThrowIfExecutorThrowsOnAnAttemptToStartASession() {
+    CommandExecutor executor = WebDriverFixture.prepareExecutorMock(exceptionResponder);
 
-    @Override
-    protected void startClient() {
-      throw new RuntimeException("Stub client that should fail");
-    }
+    assertThatExceptionOfType(SessionNotCreatedException.class)
+      .isThrownBy(() -> new RemoteWebDriver(executor, new ImmutableCapabilities()))
+      .withMessageContaining("Build info: ")
+      .withMessageContaining("Driver info: org.openqa.selenium.remote.RemoteWebDriver")
+      .withMessageContaining("Command: [null, newSession {desiredCapabilities=Capabilities {}}]");
 
-    @Override
-    protected void stopClient() {
-      stopClientCalled = true;
-    }
+    verifyNoCommands(executor);
+  }
+
+  @Test
+  public void constructorShouldThrowIfExecutorReturnsNullOnAnAttemptToStartASession() {
+    CommandExecutor executor = WebDriverFixture.prepareExecutorMock(nullResponder);
+    assertThatExceptionOfType(SessionNotCreatedException.class)
+      .isThrownBy(() -> new RemoteWebDriver(executor, new ImmutableCapabilities()));
+
+    verifyNoCommands(executor);
+  }
+
+  @Test
+  public void constructorShouldThrowIfExecutorReturnsAResponseWithNullValueOnAnAttemptToStartASession() {
+    CommandExecutor executor = WebDriverFixture.prepareExecutorMock(nullValueResponder);
+    assertThatExceptionOfType(SessionNotCreatedException.class)
+      .isThrownBy(() -> new RemoteWebDriver(executor, new ImmutableCapabilities()));
+
+    verifyNoCommands(executor);
+  }
+
+  @Test
+  public void constructorShouldThrowIfExecutorReturnsSomethingButNotCapabilitiesOnAnAttemptToStartASession() {
+    CommandExecutor executor = WebDriverFixture.prepareExecutorMock(valueResponder("OK"));
+    assertThatExceptionOfType(SessionNotCreatedException.class)
+      .isThrownBy(() -> new RemoteWebDriver(executor, new ImmutableCapabilities()));
+
+    verifyNoCommands(executor);
+  }
+
+  @Test
+  public void constructorStartsSessionAndPassesCapabilities() throws IOException {
+    CommandExecutor executor = WebDriverFixture.prepareExecutorMock(echoCapabilities, nullValueResponder);
+    ImmutableCapabilities capabilities = new ImmutableCapabilities("browserName", "cheese browser");
+
+    RemoteWebDriver driver = new RemoteWebDriver(executor, capabilities);
+
+    verify(executor).execute(argThat(
+      command -> command.getName().equals(DriverCommand.NEW_SESSION)
+                 && command.getSessionId() == null
+                 && command.getParameters().get("desiredCapabilities") == capabilities
+    ));
+    verifyNoMoreInteractions(executor);
+    assertThat(driver.getSessionId()).isNotNull();
+  }
+
+  @Test
+  public void canHandlePlatformNameCapability() {
+    WebDriverFixture fixture = new WebDriverFixture(
+      new ImmutableCapabilities(
+        "browserName", "cheese browser", "platformName", Platform.MOJAVE),
+      echoCapabilities, nullValueResponder);
+
+    assertThat(fixture.driver.getCapabilities().getPlatformName())
+      .satisfies(p -> p.is(Platform.MOJAVE));
+  }
+
+  @Test
+  public void canHandlePlatformOSSCapability() {
+    WebDriverFixture fixture = new WebDriverFixture(
+      new ImmutableCapabilities(
+        "browserName", "cheese browser", "platform", Platform.MOJAVE),
+      echoCapabilities, nullValueResponder);
+
+    assertThat(fixture.driver.getCapabilities().getPlatformName())
+      .satisfies(p -> p.is(Platform.MOJAVE));
+  }
+
+  @Test
+  public void canHandleUnknownPlatformNameAndFallsBackToUnix() {
+    WebDriverFixture fixture = new WebDriverFixture(
+      new ImmutableCapabilities(
+        "browserName", "cheese browser", "platformName", "cheese platform"),
+      echoCapabilities, nullValueResponder);
+
+    assertThat(fixture.driver.getCapabilities().getPlatformName())
+      .satisfies(p -> p.is(Platform.UNIX)); // fallback
+  }
+
+  @Test
+  public void canHandleNonStandardCapabilitiesReturnedByRemoteEnd() throws IOException {
+    Response resp = new Response();
+    resp.setSessionId(UUID.randomUUID().toString());
+    resp.setValue(ImmutableMap.of("platformName", "xxx"));
+    CommandExecutor executor = mock(CommandExecutor.class);
+    when(executor.execute(any())).thenReturn(resp);
+    RemoteWebDriver driver = new RemoteWebDriver(executor, new ImmutableCapabilities());
+    assertThat(driver.getCapabilities().getCapability("platform")).isEqualTo(Platform.UNIX);
   }
 
   private class BadStartSessionRemoteWebDriver extends RemoteWebDriver {
-    public BadStartSessionRemoteWebDriver(CommandExecutor executor, Capabilities desiredCapabilities,
-                                         Capabilities requiredCapabilities) {
-      super(executor, desiredCapabilities, requiredCapabilities);
+    public BadStartSessionRemoteWebDriver(CommandExecutor executor,
+                                          Capabilities desiredCapabilities) {
+      super(executor, desiredCapabilities);
     }
 
     @Override
-    protected void startSession(Capabilities desiredCapabilities,
-                                Capabilities requiredCapabilities) {
+    protected void startSession(Capabilities desiredCapabilities) {
       throw new RuntimeException("Stub session that should fail");
     }
 
@@ -109,5 +190,39 @@ public class RemoteWebDriverInitializationTest {
     public void quit() {
       quitCalled = true;
     }
+  }
+
+  @Test
+  public void canPassClientConfig() throws MalformedURLException {
+    HttpClient client = mock(HttpClient.class);
+    when(client.execute(any())).thenReturn(new HttpResponse().setStatus(200).setContent(
+      Contents.asJson(singletonMap("value", ImmutableMap.of(
+        "sessionId", UUID.randomUUID().toString(),
+        "capabilities", new ImmutableCapabilities().asMap())))));
+
+    HttpClient.Factory factory = mock(HttpClient.Factory.class);
+    ArgumentCaptor<ClientConfig > config = ArgumentCaptor.forClass(ClientConfig.class);
+    when(factory.createClient(config.capture())).thenReturn(client);
+
+    CommandExecutor executor = new HttpCommandExecutor(
+      emptyMap(),
+      ClientConfig.defaultConfig()
+        .baseUrl(new URL("http://localhost:4444/")).readTimeout(Duration.ofSeconds(1)),
+      factory);
+
+    RemoteWebDriver driver = new RemoteWebDriver(executor, new ImmutableCapabilities());
+
+    ClientConfig usedConfig = config.getValue();
+    assertThat(usedConfig.baseUrl()).isEqualTo(new URL("http://localhost:4444/"));
+    assertThat(usedConfig.readTimeout()).isEqualTo(Duration.ofSeconds(1));
+  }
+
+  public void verifyNoCommands(CommandExecutor executor) {
+    try {
+      verify(executor).execute(argThat(cmd -> cmd.getName().equals(DriverCommand.NEW_SESSION)));
+    } catch (IOException ex) {
+      throw new UncheckedIOException(ex);
+    }
+    verifyNoMoreInteractions(executor);
   }
 }

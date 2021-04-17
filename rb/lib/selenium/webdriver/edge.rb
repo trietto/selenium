@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -19,16 +19,14 @@
 
 require 'net/http'
 
-require 'selenium/webdriver/edge/service'
-require 'selenium/webdriver/edge/bridge'
-
 module Selenium
   module WebDriver
-
     module Edge
-      def self.driver_path=(path)
-        Service.executable_path = path
-      end
+      autoload :Features, 'selenium/webdriver/edge/features'
+      autoload :Driver, 'selenium/webdriver/edge/driver'
+      autoload :Profile, 'selenium/webdriver/edge/profile'
+      autoload :Options, 'selenium/webdriver/edge/options'
+      autoload :Service, 'selenium/webdriver/edge/service'
 
       def self.path=(path)
         Platform.assert_executable path
@@ -38,7 +36,6 @@ module Selenium
       def self.path
         @path ||= nil
       end
-
     end # Edge
   end # WebDriver
 end # Selenium

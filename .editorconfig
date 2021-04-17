@@ -9,6 +9,7 @@ end_of_line = lf
 charset = utf-8
 trim_trailing_whitespace = true
 insert_final_newline = true
+ij_continuation_indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
@@ -17,6 +18,7 @@ trim_trailing_whitespace = false
 indent_style = space
 indent_size = 2
 continuation_indent_size = 2
+ij_continuation_indent_size = 2
 
 [*.py]
 indent_style = space
@@ -33,3 +35,21 @@ indent_size = 2
 [*.html]
 indent_style = space
 indent_size = 2
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+charset = utf-8
+
+[*.h]
+indent_style = space
+indent_size = 2
+end_of_line = crlf
+charset = utf-8
+
+[*.cpp]
+indent_style = space
+indent_size = 2
+end_of_line = crlf
+charset = utf-8

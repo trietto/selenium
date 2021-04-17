@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -17,29 +17,118 @@
 # specific language governing permissions and limitations
 # under the License.
 
-require File.expand_path("../../spec_helper", __FILE__)
+require File.expand_path('../spec_helper', __dir__)
 
 module Selenium
   module WebDriver
     module Remote
-
       describe Bridge do
-        it "raises ArgumentError if passed invalid options" do
-          lambda { Bridge.new(:foo => 'bar') }.should raise_error(ArgumentError)
+        describe '#initialize' do
+          it 'raises ArgumentError if passed invalid options' do
+            expect { Bridge.new(foo: 'bar') }.to raise_error(ArgumentError)
+          end
         end
 
-        it "raises WebDriverError if uploading non-files" do
-          request_body = WebDriver.json_dump(:sessionId => '11123', :value => {})
-          headers = {'Content-Type' => 'application/json'}
-          stub_request(:post, "http://127.0.0.1:4444/wd/hub/session").to_return(
-            :status => 200, :body => request_body, :headers => headers)
+        describe '#create_session' do
+          let(:http) { WebDriver::Remote::Http::Default.new }
+          let(:bridge) { Bridge.new(http_client: http, url: 'http://localhost') }
 
-          bridge = Bridge.new
-          lambda { bridge.upload("NotAFile")}.should raise_error(Error::WebDriverError)
+          it 'sends plain capabilities' do
+            payload = JSON.generate(
+              capabilities: {
+                firstMatch: [{
+                  browserName: 'internet explorer',
+                  platformName: 'windows'
+                }]
+              }
+            )
+
+            allow(http).to receive(:request)
+              .with(any_args, payload)
+              .and_return('status' => 200, 'value' => {'sessionId' => 'foo', 'capabilities' => {}})
+
+            bridge.create_session(Capabilities.ie)
+            expect(http).to have_received(:request).with(any_args, payload)
+          end
+
+          it 'passes options as capabilities' do
+            payload = JSON.generate(
+              capabilities: {
+                firstMatch: [{
+                  'browserName' => 'chrome',
+                  'goog:chromeOptions' => {
+                    args: %w[foo bar]
+                  }
+                }]
+              }
+            )
+
+            allow(http).to receive(:request)
+              .with(any_args, payload)
+              .and_return('status' => 200, 'value' => {'sessionId' => 'foo', 'capabilities' => {}})
+
+            bridge.create_session(Chrome::Options.new(args: %w[foo bar]).as_json)
+            expect(http).to have_received(:request).with(any_args, payload)
+          end
+
+          it 'uses alwaysMatch when passed' do
+            payload = JSON.generate(
+              capabilities: {
+                alwaysMatch: {
+                  browserName: 'chrome'
+                }
+              }
+            )
+
+            allow(http).to receive(:request)
+              .with(any_args, payload)
+              .and_return('status' => 200, 'value' => {'sessionId' => 'foo', 'capabilities' => {}})
+
+            bridge.create_session(Capabilities.always_match(Capabilities.chrome).as_json)
+            expect(http).to have_received(:request).with(any_args, payload)
+          end
+
+          it 'uses firstMatch when passed' do
+            payload = JSON.generate(
+              capabilities: {
+                firstMatch: [
+                  {browserName: 'chrome'},
+                  {browserName: 'firefox'}
+                ]
+              }
+            )
+
+            allow(http).to receive(:request)
+              .with(any_args, payload)
+              .and_return('status' => 200, 'value' => {'sessionId' => 'foo', 'capabilities' => {}})
+
+            bridge.create_session(Capabilities.first_match(Capabilities.chrome, Capabilities.firefox).as_json)
+            expect(http).to have_received(:request).with(any_args, payload)
+          end
+
+          it 'supports responses with "value" -> "capabilities" capabilities' do
+            allow(http).to receive(:request)
+              .and_return('value' => {'sessionId' => '', 'capabilities' => {'browserName' => 'firefox'}})
+
+            bridge.create_session(Capabilities.new)
+            expect(bridge.capabilities[:browser_name]).to eq('firefox')
+          end
+        end
+
+        describe '#upload' do
+          it 'raises WebDriverError if uploading non-files' do
+            expect { Bridge.new(url: 'http://localhost').upload('NotAFile') }.to raise_error(Error::WebDriverError)
+          end
+        end
+
+        describe '#quit' do
+          it 'respects quit_errors' do
+            bridge = Bridge.new(url: 'http://localhost')
+            allow(bridge).to receive(:execute).with(:delete_session).and_raise(IOError)
+            expect { bridge.quit }.not_to raise_error
+          end
         end
       end
-
     end # Remote
   end # WebDriver
 end # Selenium
-

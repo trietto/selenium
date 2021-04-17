@@ -17,24 +17,24 @@
 
 package org.openqa.selenium;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.openqa.selenium.testing.Ignore.Driver.IE;
-import static org.openqa.selenium.testing.Ignore.Driver.MARIONETTE;
-import static org.openqa.selenium.testing.Ignore.Driver.PHANTOMJS;
-import static org.openqa.selenium.testing.Ignore.Driver.SAFARI;
-
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.openqa.selenium.testing.drivers.Browser.IE;
+import static org.openqa.selenium.testing.drivers.Browser.FIREFOX;
+import static org.openqa.selenium.testing.drivers.Browser.SAFARI;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.Wait;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.openqa.selenium.testing.Ignore;
 import org.openqa.selenium.testing.JUnit4TestBase;
-import org.openqa.selenium.testing.JavascriptEnabled;
 import org.openqa.selenium.testing.NeedsLocalEnvironment;
+import org.openqa.selenium.testing.NotYetImplemented;
 
+import java.time.Duration;
 import java.util.List;
 
 @NeedsLocalEnvironment(reason =
@@ -42,117 +42,131 @@ import java.util.List;
 public class ImplicitWaitTest extends JUnit4TestBase {
 
   @Before
-  public void setUp() throws Exception {
-    driver.manage().timeouts().implicitlyWait(0, MILLISECONDS);
+  public void setUp() {
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(0));
   }
 
   @After
-  public void tearDown() throws Exception {
-    driver.manage().timeouts().implicitlyWait(0, MILLISECONDS);
+  public void tearDown() {
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(0));
   }
 
   @Test
-  @JavascriptEnabled
+  public void shouldSetAndGetImplicitWaitTimeout() {
+    Duration timeout = driver.manage().timeouts().getImplicitWaitTimeout();
+    assertThat(timeout).hasMillis(0);
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(3000));
+    Duration timeout2 = driver.manage().timeouts().getImplicitWaitTimeout();
+    assertThat(timeout2).hasMillis(3000);
+  }
+
+  @Test
   public void testShouldImplicitlyWaitForASingleElement() {
     driver.get(pages.dynamicPage);
     WebElement add = driver.findElement(By.id("adder"));
 
-    driver.manage().timeouts().implicitlyWait(3000, MILLISECONDS);
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(3000));
 
     add.click();
     driver.findElement(By.id("box0")); // All is well if this doesn't throw.
   }
 
   @Test
-  @JavascriptEnabled
   public void testShouldStillFailToFindAnElementWhenImplicitWaitsAreEnabled() {
     driver.get(pages.dynamicPage);
-    driver.manage().timeouts().implicitlyWait(500, MILLISECONDS);
-    try {
-      driver.findElement(By.id("box0"));
-      fail("Expected to throw.");
-    } catch (NoSuchElementException expected) {
-    }
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(500));
+    assertThatExceptionOfType(NoSuchElementException.class)
+        .isThrownBy(() -> driver.findElement(By.id("box0")));
   }
 
   @Test
-  @JavascriptEnabled
   public void testShouldReturnAfterFirstAttemptToFindOneAfterDisablingImplicitWaits() {
     driver.get(pages.dynamicPage);
-    driver.manage().timeouts().implicitlyWait(3000, MILLISECONDS);
-    driver.manage().timeouts().implicitlyWait(0, MILLISECONDS);
-    try {
-      driver.findElement(By.id("box0"));
-      fail("Expected to throw.");
-    } catch (NoSuchElementException expected) {
-    }
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(3000));
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(0));
+    assertThatExceptionOfType(NoSuchElementException.class)
+        .isThrownBy(() -> driver.findElement(By.id("box0")));
   }
 
   @Test
-  @JavascriptEnabled
-  @Ignore(MARIONETTE)
   public void testShouldImplicitlyWaitUntilAtLeastOneElementIsFoundWhenSearchingForMany() {
     driver.get(pages.dynamicPage);
     WebElement add = driver.findElement(By.id("adder"));
 
-    driver.manage().timeouts().implicitlyWait(2000, MILLISECONDS);
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(2000));
     add.click();
     add.click();
 
     List<WebElement> elements = driver.findElements(By.className("redbox"));
-    assertFalse(elements.isEmpty());
+    assertThat(elements).isNotEmpty();
   }
 
   @Test
-  @JavascriptEnabled
   public void testShouldStillFailToFindElementsWhenImplicitWaitsAreEnabled() {
     driver.get(pages.dynamicPage);
-    driver.manage().timeouts().implicitlyWait(500, MILLISECONDS);
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(500));
     List<WebElement> elements = driver.findElements(By.className("redbox"));
-    assertTrue(elements.isEmpty());
+    assertThat(elements).isEmpty();
   }
 
   @Test
-  @JavascriptEnabled
   public void testShouldStillFailToFindElementsByIdWhenImplicitWaitsAreEnabled() {
     driver.get(pages.dynamicPage);
-    driver.manage().timeouts().implicitlyWait(500, MILLISECONDS);
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(500));
     List<WebElement> elements = driver.findElements(By.id("redbox"));
-    assertTrue(elements.toString(), elements.isEmpty());
+    assertThat(elements).isEmpty();
   }
 
   @Test
-  @JavascriptEnabled
   public void testShouldReturnAfterFirstAttemptToFindManyAfterDisablingImplicitWaits() {
     driver.get(pages.dynamicPage);
     WebElement add = driver.findElement(By.id("adder"));
 
-    driver.manage().timeouts().implicitlyWait(1100, MILLISECONDS);
-    driver.manage().timeouts().implicitlyWait(0, MILLISECONDS);
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(1100));
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(0));
     add.click();
 
     List<WebElement> elements = driver.findElements(By.className("redbox"));
-    assertTrue(elements.isEmpty());
+    assertThat(elements).isEmpty();
   }
 
   @Test
-  @JavascriptEnabled
-  @Ignore({IE, PHANTOMJS, SAFARI, MARIONETTE})
+  @Ignore(IE)
+  @Ignore(FIREFOX)
+  @NotYetImplemented(SAFARI)
   public void testShouldImplicitlyWaitForAnElementToBeVisibleBeforeInteracting() {
     driver.get(pages.dynamicPage);
 
     WebElement reveal = driver.findElement(By.id("reveal"));
     WebElement revealed = driver.findElement(By.id("revealed"));
-    driver.manage().timeouts().implicitlyWait(5000, MILLISECONDS);
+    driver.manage().timeouts().implicitlyWait(Duration.ofMillis(5000));
 
-    assertFalse("revealed should not be visible", revealed.isDisplayed());
+    assertThat(revealed.isDisplayed()).isFalse();
     reveal.click();
+    revealed.sendKeys("hello world");
+  }
 
-    try {
-      revealed.sendKeys("hello world");
-      // This is what we want
-    } catch (ElementNotVisibleException e) {
-      fail("Element should have been visible");
-    }
+  @Test
+  @NotYetImplemented(SAFARI)
+  public void testShouldRetainImplicitlyWaitFromTheReturnedWebDriverOfFrameSwitchTo() {
+    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(1));
+    driver.get(pages.xhtmlTestPage);
+    driver.findElement(By.name("windowOne")).click();
+
+    Wait<WebDriver> wait = new WebDriverWait(driver, Duration.ofSeconds(1));
+    wait.until(ExpectedConditions.numberOfWindowsToBe(2));
+    String handle = (String)driver.getWindowHandles().toArray()[1];
+
+    WebDriver newWindow = driver.switchTo().window(handle);
+
+    long start = System.currentTimeMillis();
+
+    newWindow.findElements(By.id("this-crazy-thing-does-not-exist"));
+
+    long end = System.currentTimeMillis();
+
+    long time = end - start;
+
+    assertThat(time).isGreaterThanOrEqualTo(1000);
   }
 }

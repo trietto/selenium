@@ -31,10 +31,10 @@ goog.require('goog.dom');
  * @return {Element} The first matching element found in the DOM, or null if no
  *     such element could be found.
  */
-bot.locators.name.single = function(target, root) {
+bot.locators.name.single = function (target, root) {
   var dom = goog.dom.getDomHelper(root);
   var allElements = dom.getElementsByTagNameAndClass('*', null, root);
-  var element = goog.array.find(allElements, function(element) {
+  var element = goog.array.find(allElements, function (element) {
     return bot.dom.getAttribute(element, 'name') == target;
   });
   return /**@type{Element}*/ (element);
@@ -47,12 +47,12 @@ bot.locators.name.single = function(target, root) {
  * @param {string} target The name to search for.
  * @param {!(Document|Element)} root The document or element to perform the
  *     search under.
- * @return {!goog.array.ArrayLike} All matching elements, or an empty list.
+ * @return {!IArrayLike} All matching elements, or an empty list.
  */
-bot.locators.name.many = function(target, root) {
+bot.locators.name.many = function (target, root) {
   var dom = goog.dom.getDomHelper(root);
   var allElements = dom.getElementsByTagNameAndClass('*', null, root);
-  return goog.array.filter(allElements, function(element) {
+  return goog.array.filter(allElements, function (element) {
     return bot.dom.getAttribute(element, 'name') == target;
   });
 };

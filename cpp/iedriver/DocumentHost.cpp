@@ -15,13 +15,21 @@
 // limitations under the License.
 
 #include "DocumentHost.h"
+
+#include <IEPMapi.h>
+#include <UIAutomation.h>
+
+#include "errorcodes.h"
+#include "logging.h"
+
 #include "BrowserCookie.h"
 #include "BrowserFactory.h"
 #include "CookieManager.h"
-#include "logging.h"
+#include "HookProcessor.h"
 #include "messages.h"
 #include "RegistryUtilities.h"
 #include "Script.h"
+#include "StringUtilities.h"
 
 namespace webdriver {
 
@@ -51,14 +59,17 @@ DocumentHost::DocumentHost(HWND hwnd, HWND executor_handle) {
   this->browser_id_ = StringUtilities::ToString(cast_guid_string);
 
   ::RpcStringFree(&guid_string);
-
   this->window_handle_ = hwnd;
   this->executor_handle_ = executor_handle;
+  this->script_executor_handle_ = NULL;
   this->is_closing_ = false;
   this->wait_required_ = false;
+  this->is_awaiting_new_process_ = false;
   this->focused_frame_window_ = NULL;
   this->cookie_manager_ = new CookieManager();
-  this->cookie_manager_->Initialize(this->window_handle_);
+  if (this->window_handle_ != NULL) {
+    this->cookie_manager_->Initialize(this->window_handle_);
+  }
 }
 
 DocumentHost::~DocumentHost(void) {
@@ -83,7 +94,7 @@ std::string DocumentHost::GetCurrentUrl() {
     return "";
   }
 
-  std::wstring converted_url = url;
+  std::wstring converted_url(url, ::SysStringLen(url));
   std::string current_url = StringUtilities::ToString(converted_url);
   return current_url;
 }
@@ -124,6 +135,16 @@ std::string DocumentHost::GetPageSource() {
   return page_source;
 }
 
+void DocumentHost::Restore(void) {
+  if (this->IsFullScreen()) {
+    this->SetFullScreen(false);
+  }
+  HWND window_handle = this->GetTopLevelWindowHandle();
+  if (::IsZoomed(window_handle) || ::IsIconic(window_handle)) {
+    ::ShowWindow(window_handle, SW_RESTORE);
+  }
+}
+
 int DocumentHost::SetFocusedFrameByElement(IHTMLElement* frame_element) {
   LOG(TRACE) << "Entering DocumentHost::SetFocusedFrameByElement";
 
@@ -133,18 +154,42 @@ int DocumentHost::SetFocusedFrameByElement(IHTMLElement* frame_element) {
     return WD_SUCCESS;
   }
 
-  CComPtr<IHTMLFrameBase2> frame_base;
-  frame_element->QueryInterface<IHTMLFrameBase2>(&frame_base);
-  if (!frame_base) {
-    LOG(WARN) << "IHTMLElement is not a FRAME or IFRAME element";
-    return ENOSUCHFRAME;
-  }
-
   CComPtr<IHTMLWindow2> interim_result;
-  hr = frame_base->get_contentWindow(&interim_result);
-  if (FAILED(hr)) {
-    LOGHR(WARN, hr) << "Cannot get contentWindow from IHTMLFrameBase2, call to IHTMLFrameBase2::get_contentWindow failed";
-    return ENOSUCHFRAME;
+  CComPtr<IHTMLObjectElement4> object_element;
+  hr = frame_element->QueryInterface<IHTMLObjectElement4>(&object_element);
+  if (SUCCEEDED(hr) && object_element) {
+	  CComPtr<IDispatch> object_disp;
+	  object_element->get_contentDocument(&object_disp);
+	  if (!object_disp) {
+		  LOG(WARN) << "Cannot get IDispatch interface from IHTMLObjectElement4 element";
+		  return ENOSUCHFRAME;
+	  }
+
+	  CComPtr<IHTMLDocument2> object_doc;
+	  object_disp->QueryInterface<IHTMLDocument2>(&object_doc);
+	  if (!object_doc) {
+		  LOG(WARN) << "Cannot get IHTMLDocument2 document from IDispatch reference";
+		  return ENOSUCHFRAME;
+	  }
+
+	  hr = object_doc->get_parentWindow(&interim_result);
+	  if (FAILED(hr)) {
+		  LOGHR(WARN, hr) << "Cannot get parentWindow from IHTMLDocument2, call to IHTMLDocument2::get_parentWindow failed";
+		  return ENOSUCHFRAME;
+	  }
+  } else {
+	  CComPtr<IHTMLFrameBase2> frame_base;
+	  frame_element->QueryInterface<IHTMLFrameBase2>(&frame_base);
+	  if (!frame_base) {
+		  LOG(WARN) << "IHTMLElement is not a FRAME or IFRAME element";
+		  return ENOSUCHFRAME;
+	  }
+
+	  hr = frame_base->get_contentWindow(&interim_result);
+	  if (FAILED(hr)) {
+		  LOGHR(WARN, hr) << "Cannot get contentWindow from IHTMLFrameBase2, call to IHTMLFrameBase2::get_contentWindow failed";
+		  return ENOSUCHFRAME;
+	  }
   }
 
   this->focused_frame_window_ = interim_result;
@@ -234,34 +279,8 @@ int DocumentHost::SetFocusedFrameByIdentifier(VARIANT frame_identifier) {
   return WD_SUCCESS;
 }
 
-void DocumentHost::GetCookies(std::vector<BrowserCookie>* cookies) {
-  LOG(TRACE) << "Entering DocumentHost::GetCookies";
-  this->cookie_manager_->GetCookies(this->GetCurrentUrl(), cookies);
-}
-
-int DocumentHost::AddCookie(const std::string& cookie,
-                            const bool validate_document_type) {
-  LOG(TRACE) << "Entering DocumentHost::AddCookie";
-  bool add_succeeded = this->cookie_manager_->SetCookie(this->GetCurrentUrl(),
-                                                        cookie);
-  if (!add_succeeded) {
-    return EINVALIDCOOKIEDOMAIN;
-  }
-  return WD_SUCCESS;
-}
-
-int DocumentHost::DeleteCookie(const BrowserCookie& cookie) {
-  LOG(TRACE) << "Entering DocumentHost::DeleteCookie";
-  // TODO: Optimize and return legitimate error conditions.
-  bool deletesucceeded = this->cookie_manager_->DeleteCookie(this->GetCurrentUrl(),
-                                                             cookie);
-  return WD_SUCCESS;
-}
-
 void DocumentHost::PostQuitMessage() {
   LOG(TRACE) << "Entering DocumentHost::PostQuitMessage";
-
-  this->set_is_closing(true);
 
   LPSTR message_payload = new CHAR[this->browser_id_.size() + 1];
   strcpy_s(message_payload, this->browser_id_.size() + 1, this->browser_id_.c_str());
@@ -269,60 +288,6 @@ void DocumentHost::PostQuitMessage() {
                 WD_BROWSER_QUIT,
                 NULL,
                 reinterpret_cast<LPARAM>(message_payload));
-}
-
-bool DocumentHost::IsHtmlPage(IHTMLDocument2* doc) {
-  LOG(TRACE) << "Entering DocumentHost::IsHtmlPage";
-
-  CComBSTR type;
-  HRESULT hr = doc->get_mimeType(&type);
-  if (FAILED(hr)) {
-    LOGHR(WARN, hr) << "Unable to get mime type for document, call to IHTMLDocument2::get_mimeType failed";
-    return false;
-  }
-
-  // Call once to get the required buffer size, then again to fill
-  // the buffer.
-  DWORD mime_type_name_buffer_size = 0;
-  hr = ::AssocQueryString(0,
-                          ASSOCSTR_FRIENDLYDOCNAME,
-                          L".htm",
-                          NULL,
-                          NULL,
-                          &mime_type_name_buffer_size);
-
-  std::vector<wchar_t> mime_type_name_buffer(mime_type_name_buffer_size);
-  hr = ::AssocQueryString(0,
-                          ASSOCSTR_FRIENDLYDOCNAME,
-                          L".htm",
-                          NULL,
-                          &mime_type_name_buffer[0],
-                          &mime_type_name_buffer_size);
-
-  if (FAILED(hr)) {
-    LOGHR(WARN, hr) << "Call to AssocQueryString failed in getting friendly name of .htm documents";
-    return false;
-  }
-
-  std::wstring mime_type_name = &mime_type_name_buffer[0];
-  std::wstring type_string = type;
-  if (type_string == mime_type_name) {
-    return true;
-  }
-
-  // If the user set Firefox as a default browser at any point, the MIME type
-  // appears to be "sticky". This isn't elegant, but it appears to alleviate
-  // the worst symptoms. Tested by using both Safari and Opera as the default
-  // browser, even after setting IE as the default after Firefox (so the chain
-  // of defaults looks like (IE -> Firefox -> IE -> Opera)
-
-  if (L"Firefox HTML Document" == mime_type_name) {
-    LOG(INFO) << "It looks like Firefox was once the default browser. " 
-              << "Guessing the page type from mime type alone";
-    return true;
-  }
-
-  return false;
 }
 
 HWND DocumentHost::FindContentWindowHandle(HWND top_level_window_handle) {
@@ -424,4 +389,182 @@ bool DocumentHost::GetDocumentDimensions(IHTMLDocument2* doc, LocationInfo* info
   return true;
 }
 
+bool DocumentHost::IsCrossZoneUrl(std::string url) {
+  LOG(TRACE) << "Entering Browser::IsCrossZoneUrl";
+  std::wstring target_url = StringUtilities::ToWString(url);
+  CComPtr<IUri> parsed_url;
+  HRESULT hr = ::CreateUri(target_url.c_str(),
+                           Uri_CREATE_IE_SETTINGS,
+                           0,
+                           &parsed_url);
+  if (FAILED(hr)) {
+    // If we can't parse the URL, assume that it's invalid, and
+    // therefore won't cross a Protected Mode boundary.
+    return false;
+  }
+  bool is_protected_mode_browser = this->IsProtectedMode();
+  bool is_protected_mode_url = is_protected_mode_browser;
+  if (url.find("about:blank") != 0) {
+    // If the URL starts with "about:blank", it won't cross the Protected
+    // Mode boundary, so skip checking if it's a Protected Mode URL.
+    is_protected_mode_url = ::IEIsProtectedModeURL(target_url.c_str()) == S_OK;
+  }
+  bool is_cross_zone = is_protected_mode_browser != is_protected_mode_url;
+  if (is_cross_zone) {
+    LOG(DEBUG) << "Navigation across Protected Mode zone detected. URL: "
+               << url
+               << ", is URL Protected Mode: "
+               << (is_protected_mode_url ? "true" : "false")
+               << ", is IE in Protected Mode: "
+               << (is_protected_mode_browser ? "true" : "false");
+  }
+  return is_cross_zone;
+}
+
+bool DocumentHost::IsProtectedMode() {
+  LOG(TRACE) << "Entering DocumentHost::IsProtectedMode";
+  HWND window_handle = this->GetBrowserWindowHandle();
+  HookSettings hook_settings;
+  hook_settings.hook_procedure_name = "ProtectedModeWndProc";
+  hook_settings.hook_procedure_type = WH_CALLWNDPROC;
+  hook_settings.window_handle = window_handle;
+  hook_settings.communication_type = OneWay;
+
+  HookProcessor hook;
+  if (!hook.CanSetWindowsHook(window_handle)) {
+    LOG(WARN) << "Cannot check Protected Mode because driver and browser are "
+              << "not the same bit-ness.";
+    return false;
+  }
+  hook.Initialize(hook_settings);
+  HookProcessor::ResetFlag();
+  ::SendMessage(window_handle, WD_IS_BROWSER_PROTECTED_MODE, NULL, NULL);
+  bool is_protected_mode = HookProcessor::GetFlagValue();
+  return is_protected_mode;
+}
+
+bool DocumentHost::SetFocusToBrowser() {
+  LOG(TRACE) << "Entering DocumentHost::SetFocusToBrowser";
+
+  HWND top_level_window_handle = this->GetTopLevelWindowHandle();
+  HWND foreground_window = ::GetAncestor(::GetForegroundWindow(), GA_ROOT);
+  if (foreground_window != top_level_window_handle) {
+    LOG(TRACE) << "Top-level IE window is " << top_level_window_handle
+               << " foreground window is " << foreground_window;
+    CComPtr<IUIAutomation> ui_automation;
+    HRESULT hr = ::CoCreateInstance(CLSID_CUIAutomation,
+                                    NULL,
+                                    CLSCTX_INPROC_SERVER,
+                                    IID_IUIAutomation,
+                                    reinterpret_cast<void**>(&ui_automation));
+    if (SUCCEEDED(hr)) {
+      LOG(TRACE) << "Using UI Automation to set window focus";
+      CComPtr<IUIAutomationElement> parent_window;
+      hr = ui_automation->ElementFromHandle(top_level_window_handle,
+        &parent_window);
+      if (SUCCEEDED(hr)) {
+        CComPtr<IUIAutomationWindowPattern> window_pattern;
+        hr = parent_window->GetCurrentPatternAs(UIA_WindowPatternId,
+          IID_PPV_ARGS(&window_pattern));
+        if (SUCCEEDED(hr)) {
+          BOOL is_topmost;
+          hr = window_pattern->get_CurrentIsTopmost(&is_topmost);
+          WindowVisualState visual_state;
+          hr = window_pattern->get_CurrentWindowVisualState(&visual_state);
+          if (visual_state == WindowVisualState::WindowVisualState_Maximized ||
+            visual_state == WindowVisualState::WindowVisualState_Normal) {
+            parent_window->SetFocus();
+            window_pattern->SetWindowVisualState(visual_state);
+          }
+        }
+      }
+    }
+  }
+
+  foreground_window = ::GetAncestor(::GetForegroundWindow(), GA_ROOT);
+  if (foreground_window != top_level_window_handle) {
+    HWND content_window_handle = this->GetContentWindowHandle();
+    LOG(TRACE) << "Top-level IE window is " << top_level_window_handle
+               << " foreground window is " << foreground_window;
+    LOG(TRACE) << "Window still not in foreground; "
+               << "attempting to use SetForegroundWindow API";
+    UINT_PTR lock_timeout = 0;
+    DWORD process_id = 0;
+    DWORD thread_id = ::GetWindowThreadProcessId(top_level_window_handle,
+                                                 &process_id);
+    DWORD current_thread_id = ::GetCurrentThreadId();
+    DWORD current_process_id = ::GetCurrentProcessId();
+    if (current_thread_id != thread_id) {
+      ::AttachThreadInput(current_thread_id, thread_id, TRUE);
+      ::SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT,
+                             0,
+                             &lock_timeout,
+                             0);
+      ::SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT,
+                             0,
+                             0,
+                             SPIF_SENDWININICHANGE | SPIF_UPDATEINIFILE);
+      HookSettings hook_settings;
+      hook_settings.hook_procedure_name = "AllowSetForegroundProc";
+      hook_settings.hook_procedure_type = WH_CALLWNDPROC;
+      hook_settings.window_handle = content_window_handle;
+      hook_settings.communication_type = OneWay;
+
+      HookProcessor hook;
+      if (!hook.CanSetWindowsHook(content_window_handle)) {
+        LOG(WARN) << "Setting window focus may fail because driver and browser "
+                  << "are not the same bit-ness.";
+        return false;
+      }
+      hook.Initialize(hook_settings);
+      ::SendMessage(content_window_handle,
+                    WD_ALLOW_SET_FOREGROUND,
+                    NULL,
+                    NULL);
+      hook.Dispose();
+    }
+    ::SetForegroundWindow(top_level_window_handle);
+    ::Sleep(100);
+    if (current_thread_id != thread_id) {
+      ::SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT,
+                             0,
+                             reinterpret_cast<void*>(lock_timeout),
+                             SPIF_SENDWININICHANGE | SPIF_UPDATEINIFILE);
+      ::AttachThreadInput(current_thread_id, thread_id, FALSE);
+    }
+  }
+  foreground_window = ::GetAncestor(::GetForegroundWindow(), GA_ROOT);
+  return foreground_window == top_level_window_handle;
+}
+
+
 } // namespace webdriver
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+LRESULT CALLBACK ProtectedModeWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
+  CWPSTRUCT* call_window_proc_struct = reinterpret_cast<CWPSTRUCT*>(lParam);
+  if (WD_IS_BROWSER_PROTECTED_MODE == call_window_proc_struct->message) {
+    BOOL is_protected_mode = FALSE;
+    HRESULT hr = ::IEIsProtectedModeProcess(&is_protected_mode);
+    webdriver::HookProcessor::SetFlagValue(is_protected_mode == TRUE);
+  }
+  return ::CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+LRESULT CALLBACK AllowSetForegroundProc(int nCode, WPARAM wParam, LPARAM lParam) {
+  if ((nCode == HC_ACTION) && (wParam == PM_REMOVE)) {
+    MSG* msg = reinterpret_cast<MSG*>(lParam);
+    if (msg->message == WD_ALLOW_SET_FOREGROUND) {
+      ::AllowSetForegroundWindow(ASFW_ANY);
+    }
+  }
+
+  return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+#ifdef __cplusplus
+}
+#endif

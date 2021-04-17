@@ -18,10 +18,12 @@
 #define WEBDRIVER_COOKIEMANAGER_H_
 
 #include <map>
+#include <string>
 #include <vector>
 
 namespace webdriver {
 
+// Forward declaration of classes.
 class BrowserCookie;
 class HookProcessor;
 
@@ -35,7 +37,7 @@ class CookieManager {
   void Initialize(HWND window_handle);
   int GetCookies(const std::string& url,
                  std::vector<BrowserCookie>* all_cookies);
-  bool SetCookie(const std::string& url, const std::string& cookie_data);
+  int SetCookie(const std::string& url, const BrowserCookie& cookie);
   bool DeleteCookie(const std::string& url, const BrowserCookie& cookie);
 
  private:
@@ -44,34 +46,17 @@ class CookieManager {
                                     HookProcessor* hook);
   void ParseCookieString(const std::wstring& cookie_string,
                          std::map<std::string, std::string>* cookies);
-  BrowserCookie ParsePersistentCookieInfo(const std::string& cookie);
-  void ReadPersistentCookieFile(const std::wstring& file_name,
-                                const bool include_secure_cookies,
-                                std::map<std::string, BrowserCookie>* cookies);
+  BrowserCookie ParseSingleCookie(const std::string& cookie);
+  void ParseCookieList(const std::string& cookie_file_contents,
+                       const bool include_secure_cookies,
+                       std::map<std::string, BrowserCookie>* cookies);
+  std::string ReadCookieFile(const std::wstring& file_name);
 
-  bool RecursivelyDeleteCookie(const std::string& url,
-                               const std::string& name,
-                               const std::string& domain,
-                               const std::string& path,
-                               const bool is_httponly);
-  bool RecurseCookiePath(const std::string& url,
-                         const std::string& name,
-                         const std::string& domain,
-                         const std::string& path,
-                         const bool is_httponly);
-  bool RecurseCookieDomain(const std::string& url,
-                           const std::string& name,
-                           const std::string& domain,
-                           const std::string& path,
-                           const bool is_httponly);
-  bool DeleteCookie(const std::string& url,
-                    const std::string& name,
-                    const std::string& domain,
-                    const std::string& path,
-                    const bool is_httponly);
-  bool SetCookie(const std::string& url,
-                 const std::string& cookie_data,
-                 const bool is_httponly);
+  bool RecursivelyDeleteCookie(const std::string& url, const BrowserCookie& cookie);
+  bool RecurseCookiePath(const std::string& url, const BrowserCookie& cookie);
+  bool RecurseCookieDomain(const std::string& url, const BrowserCookie& cookie);
+
+  bool IsAdvancedCookiesApi(void);
 
   HWND window_handle_;
 };

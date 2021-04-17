@@ -1,4 +1,4 @@
-﻿// <copyright file="IFindsByCssSelector.cs" company="WebDriver Committers">
+// <copyright file="IFindsByCssSelector.cs" company="WebDriver Committers">
 // Licensed to the Software Freedom Conservancy (SFC) under one
 // or more contributor license agreements. See the NOTICE file
 // distributed with this work for additional information
@@ -17,16 +17,14 @@
 // </copyright>
 
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text;
-using OpenQA.Selenium;
 
 namespace OpenQA.Selenium.Internal
 {
     /// <summary>
     /// Defines the interface through which the user finds elements by their cascading style sheet (CSS) selector.
     /// </summary>
+    [Obsolete("The internal IFindsBy interfaces are being deprecated in favor of common implementation.")]
     public interface IFindsByCssSelector
     {
         /// <summary>

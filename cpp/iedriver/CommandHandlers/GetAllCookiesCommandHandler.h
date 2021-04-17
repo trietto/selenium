@@ -17,43 +17,20 @@
 #ifndef WEBDRIVER_IE_GETALLCOOKIESCOMMANDHANDLER_H_
 #define WEBDRIVER_IE_GETALLCOOKIESCOMMANDHANDLER_H_
 
-#include "../Browser.h"
 #include "../IECommandHandler.h"
-#include "../IECommandExecutor.h"
-#include "../BrowserCookie.h"
 
 namespace webdriver {
 
 class GetAllCookiesCommandHandler : public IECommandHandler {
  public:
-  GetAllCookiesCommandHandler(void) {
-  }
-
-  virtual ~GetAllCookiesCommandHandler(void) {
-  }
+  GetAllCookiesCommandHandler(void);
+  virtual ~GetAllCookiesCommandHandler(void);
 
  protected:
   void ExecuteInternal(const IECommandExecutor& executor,
                        const ParametersMap& command_parameters,
-                       Response* response) {
-    Json::Value response_value(Json::arrayValue);
-    BrowserHandle browser_wrapper;
-    int status_code = executor.GetCurrentBrowser(&browser_wrapper);
-    if (status_code != WD_SUCCESS) {
-      response->SetErrorResponse(status_code, "Unable to get browser");
-      return;
-    }
-
-    std::vector<BrowserCookie> cookies;
-    browser_wrapper->GetCookies(&cookies);
-    std::vector<BrowserCookie>::iterator it = cookies.begin();
-    for (; it != cookies.end(); ++it) {
-      response_value.append(it->ToJson());
-    }
-
-    response->SetSuccessResponse(response_value);
-  }
-};
+                       Response* response);
+  };
 
 } // namespace webdriver
 

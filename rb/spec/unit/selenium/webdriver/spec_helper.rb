@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -20,29 +20,31 @@
 require 'rubygems'
 require 'time'
 require 'rspec'
-require 'ci/reporter/rspec'
 require 'webmock/rspec'
 require 'selenium-webdriver'
 require 'securerandom'
 require 'pathname'
+require_relative '../../../rspec_matchers'
 
 module Selenium
   module WebDriver
     module UnitSpecHelper
-
-      def with_env(hash, &blk)
-        hash.each { |k,v| ENV[k.to_s] = v.to_s }
+      def with_env(hash)
+        hash.each { |k, v| ENV[k.to_s] = v.to_s }
         yield
       ensure
         hash.each_key { |k| ENV.delete(k) }
       end
-
     end
   end
 end
 
 RSpec.configure do |c|
+  c.define_derived_metadata do |meta|
+    meta[:aggregate_failures] = true
+  end
+
   c.include Selenium::WebDriver::UnitSpecHelper
 
-  c.filter_run :focus => true if ENV['focus']
+  c.filter_run focus: true if ENV['focus']
 end

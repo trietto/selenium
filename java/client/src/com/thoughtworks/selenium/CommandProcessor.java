@@ -48,20 +48,28 @@ public interface CommandProcessor {
    */
   String doCommand(String command, String[] args);
 
-  /** Sets extension Javascript for the session */
-  public void setExtensionJs(String extensionJs);
+  /**
+   * Sets extension Javascript for the session
+   *
+   * @param extensionJs extension javascript
+   */
+  void setExtensionJs(String extensionJs);
 
   /** Starts a new Selenium testing session */
-  public void start();
+  void start();
 
-  /** Starts a new Selenium testing session with a String, representing a configuration */
-  public void start(String optionsString);
+  /** Starts a new Selenium testing session with a String, representing a configuration
+   * @param optionsString option string
+   */
+  void start(String optionsString);
 
-  /** Starts a new Selenium testing session with a configuration options object */
-  public void start(Object optionsObject);
+  /** Starts a new Selenium testing session with a configuration options object
+   * @param optionsObject options object
+   */
+  void start(Object optionsObject);
 
   /** Ends the current Selenium testing session (normally killing the browser) */
-  public void stop();
+  void stop();
 
   String getString(String string, String[] strings);
 

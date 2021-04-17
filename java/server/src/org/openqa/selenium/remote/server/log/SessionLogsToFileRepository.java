@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 package org.openqa.selenium.remote.server.log;
 
 import org.openqa.selenium.remote.SessionId;
@@ -31,9 +30,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 public class SessionLogsToFileRepository {
-  private Map<SessionId, LogFile> sessionToLogFileMap;
+  private static final Logger LOG = Logger.getLogger(SessionLogsToFileRepository.class.getName());
+  private final Map<SessionId, LogFile> sessionToLogFileMap;
 
   public SessionLogsToFileRepository() {
     sessionToLogFileMap = new HashMap<>();
@@ -45,7 +46,7 @@ public class SessionLogsToFileRepository {
    * read logRecords from the file.
    *
    * @param sessionId session-id for the log file entry needs to be created.
-   * @throws IOException
+   * @throws IOException file i/o exception can occur because of a temp file created
    */
   public void createLogFileAndAddToMap(SessionId sessionId) throws IOException {
     File rcLogFile;
@@ -63,9 +64,9 @@ public class SessionLogsToFileRepository {
    *
    * @param sessionId session-id to which the log records belong
    * @param records logRecords that need to be stored
-   * @throws IOException
+   * @throws IOException file i/o exception can occur because of a temp file created
    */
-  synchronized public void flushRecordsToLogFile(SessionId sessionId,
+  public synchronized void flushRecordsToLogFile(SessionId sessionId,
       List<LogRecord> records) throws IOException {
     LogFile logFile = sessionToLogFileMap.get(sessionId);
 
@@ -87,7 +88,7 @@ public class SessionLogsToFileRepository {
    *
    * @param sessionId session-id for which the file logs needs to be returned.
    * @return A List of LogRecord objects, which can be <i>null</i>.
-   * @throws IOException
+   * @throws IOException IO exception can occur with reading the log file
    */
   public List<LogRecord> getLogRecords(SessionId sessionId) throws IOException {
     LogFile logFile = sessionToLogFileMap.get(sessionId);
@@ -104,10 +105,7 @@ public class SessionLogsToFileRepository {
           .readObject())) {
         logRecords.add(tmpLogRecord);
       }
-    } catch (IOException ex) {
-      logFile.closeLogReader();
-      return logRecords;
-    } catch (ClassNotFoundException e) {
+    } catch (IOException | ClassNotFoundException ex) {
       logFile.closeLogReader();
       return logRecords;
     }
@@ -129,7 +127,7 @@ public class SessionLogsToFileRepository {
   }
 
   static class LogFile {
-    private String logName;
+    private final String logName;
     private ObjectOutputStream logWriter;
     private ObjectInputStream logReader;
 
@@ -169,7 +167,9 @@ public class SessionLogsToFileRepository {
       if (logName != null) {
         closeLogReader();
         closeLogWriter();
-        new File(logName).delete();
+        if (!new File(logName).delete()) {
+          LOG.warning("Unable to delete " + logName);
+        }
       }
     }
   }

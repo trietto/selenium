@@ -16,11 +16,6 @@
 // limitations under the License.
 // </copyright>
 
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Text;
-
 namespace OpenQA.Selenium
 {
     /// <summary>
@@ -39,6 +34,16 @@ namespace OpenQA.Selenium
         /// <remarks>"Currently-focused" is defined as the browser window having the window handle
         /// returned when IWebDriver.CurrentWindowHandle is called.</remarks>
         IWindow Window { get; }
+
+        /// <summary>
+        /// Gets an object allowing the user to examine the logs for this driver instance.
+        /// </summary>
+        ILogs Logs { get; }
+
+        /// <summary>
+        /// Gets an object allowing the user to manage network communication by the browser.
+        /// </summary>
+        INetwork Network { get; }
 
         /// <summary>
         /// Provides access to the timeouts defined for this driver.

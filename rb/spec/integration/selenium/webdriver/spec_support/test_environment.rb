@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -21,138 +21,157 @@ module Selenium
   module WebDriver
     module SpecSupport
       class TestEnvironment
-
-        attr_accessor :unguarded
         attr_reader :driver
 
         def initialize
-          @create_driver_error       = nil
+          @create_driver_error = nil
           @create_driver_error_count = 0
 
-          # TODO: get rid of ENV
-          @driver = (ENV['WD_SPEC_DRIVER'] || raise("must set WD_SPEC_DRIVER")).to_sym
+          @driver = (ENV['WD_SPEC_DRIVER'] || :chrome).to_sym
+          @driver_instance = nil
+        end
+
+        def print_env
+          puts "\nRunning Ruby specs:\n\n"
+
+          env = current_env.merge(ruby: RUBY_DESCRIPTION)
+
+          just = current_env.keys.map { |e| e.to_s.size }.max
+          env.each do |key, value|
+            puts "#{key.to_s.rjust(just)}: #{value}"
+          end
+
+          puts "\n"
         end
 
         def browser
-          if driver == :remote
-            # TODO: get rid of ENV
-            (ENV['WD_REMOTE_BROWSER'] || :firefox).to_sym
-          else
-            driver
-          end
+          driver == :remote ? (ENV['WD_REMOTE_BROWSER'] || :chrome).to_sym : driver
         end
 
         def driver_instance
-          @driver_instance ||= new_driver_instance
+          @driver_instance || create_driver!
         end
 
-        def reset_driver!
+        def reset_driver!(time = 0)
           quit_driver
-          @driver_instance = new_driver_instance
+          sleep time
+          driver_instance
+        end
+
+        # TODO: optimize since this approach is not assured on IE
+        def ensure_single_window
+          driver_instance.window_handles[1..-1].each do |handle|
+            driver_instance.switch_to.window(handle)
+            driver_instance.close
+          end
+          driver_instance.switch_to.window(driver_instance.window_handles.first)
         end
 
         def quit_driver
-          if @driver_instance
-            @driver_instance.quit
-            @driver_instance = nil
-          end
-        end
+          return unless @driver_instance
 
-        def new_driver_instance
-          check_for_previous_error
-          create_driver
+          @driver_instance.quit
+        ensure
+          @driver_instance = nil
         end
 
         def app_server
-          @app_server ||= (
-            s = RackServer.new(root.join("common/src/web").to_s)
-            s.start
-
-            s
-          )
+          @app_server ||= RackServer.new(root.join('common/src/web').to_s).tap(&:start)
         end
 
         def remote_server
-          @remote_server ||= (
-            Selenium::Server.new(remote_server_jar,
-              :port       => PortProber.above(4444),
-              :log        => !!$DEBUG,
-              :background => true,
-              :timeout    => 60
-            )
+          @remote_server ||= Selenium::Server.new(
+            remote_server_jar,
+            port: PortProber.above(4444),
+            log: $DEBUG,
+            background: true,
+            timeout: 60
           )
         end
 
+        def reset_remote_server
+          @remote_server.stop if defined? @remote_server
+          @remote_server = nil
+          remote_server
+        end
+
+        def remote_server?
+          !@remote_server.nil?
+        end
+
         def remote_server_jar
-          @remote_server_jar ||= root.join("build/java/server/test/org/openqa/selenium/server-with-tests-standalone.jar").to_s
+          local_selenium_jar = 'selenium_server_deploy.jar'
+          downloaded_selenium_jar = "selenium-server-standalone-#{Selenium::Server.latest}.jar"
+
+          directory_names = [root, root.join('rb'), root.join('build'), root.join('build/rb')]
+          file_names = [local_selenium_jar, downloaded_selenium_jar]
+          file_names.delete(local_selenium_jar) if ENV['DOWNLOAD_SERVER']
+
+          files = file_names.each_with_object([]) do |file, array|
+            directory_names.each { |dir| array << "#{dir}/#{file}" }
+          end
+
+          jar = files.find { |file| File.exist?(file) } ||
+                Selenium::Server.download(:latest) && files.find { |file| File.exist?(file) }
+
+          WebDriver.logger.info "Server Location: #{jar}"
+          puts "Server Location: #{jar}"
+          jar
         end
 
         def quit
           app_server.stop
 
-          if defined?(@remote_server)
-            @remote_server.stop
-          end
+          @remote_server.stop if defined? @remote_server
 
           @driver_instance = @app_server = @remote_server = nil
-        ensure
-          Guards.report
-        end
-
-        def unguarded?
-          @unguarded ||= false
-        end
-
-        def native_events?
-          @native_events ||= !!ENV['native']
         end
 
         def url_for(filename)
-          url = app_server.where_is filename
-          url.sub!("127.0.0.1", "10.0.2.2") if browser == :android
-
-          url
+          app_server.where_is filename
         end
 
         def root
-          @root ||= Pathname.new("../../../../../../../").expand_path(__FILE__)
+          # prefer #realpath over #expand_path to avoid problems with UNC
+          # see https://bugs.ruby-lang.org/issues/13515
+          @root ||= Pathname.new('../../../../../../../').realpath(__FILE__)
+        end
+
+        def create_driver!(**opts, &block)
+          check_for_previous_error
+
+          method = "create_#{driver}_driver".to_sym
+          instance = if private_methods.include?(method)
+                       send method, opts
+                     else
+                       WebDriver::Driver.for(driver, opts)
+                     end
+          @create_driver_error_count -= 1 unless @create_driver_error_count.zero?
+          if block
+            begin
+              yield(instance)
+            ensure
+              instance.quit
+            end
+          else
+            @driver_instance = instance
+          end
+        rescue StandardError => e
+          @create_driver_error = e
+          @create_driver_error_count += 1
+          raise e
         end
 
         private
 
-        def create_driver
-          instance = case driver
-                     when :remote
-                       create_remote_driver
-                     when :firefox
-                       create_firefox_driver
-                     when :chrome
-                       create_chrome_driver
-                     when :iphone
-                       create_iphone_driver
-                     when :safari
-                       create_safari_driver
-                     when :phantomjs
-                       create_phantomjs_driver
-                     else
-                       WebDriver::Driver.for driver
-                     end
-
-          @create_driver_error_count -= 1 unless @create_driver_error_count == 0
-          instance
-        rescue => ex
-          @create_driver_error = ex
-          @create_driver_error_count += 1
-          raise ex
-        end
-
-        def remote_capabilities
-          caps  = WebDriver::Remote::Capabilities.send(ENV['WD_REMOTE_BROWSER'] || 'firefox')
-
-          caps.javascript_enabled    = true
-          caps.css_selectors_enabled = true
-
-          caps
+        def current_env
+          {
+            browser: browser,
+            driver: driver,
+            version: driver_instance.capabilities.version,
+            platform: Platform.os,
+            ci: Platform.ci
+          }
         end
 
         MAX_ERRORS = 4
@@ -163,90 +182,53 @@ module Selenium
         def check_for_previous_error
           return unless @create_driver_error && @create_driver_error_count >= MAX_ERRORS
 
-          msg = "previous #{@create_driver_error_count} instantiations of driver #{driver.inspect} failed, not trying again"
-          msg << " (#{@create_driver_error.message})"
+          msg = "previous #{@create_driver_error_count} instantiations of driver #{driver.inspect} failed,"
+          msg += " not trying again (#{@create_driver_error.message})"
 
           raise DriverInstantiationError, msg, @create_driver_error.backtrace
         end
 
-        def create_remote_driver
-          WebDriver::Driver.for(:remote,
-            :desired_capabilities => remote_capabilities,
-            :url                  => ENV['WD_REMOTE_URL'] || remote_server.webdriver_url,
-            :http_client          => keep_alive_client || http_client
-          )
+        def create_remote_driver(opt = {})
+          options = opt.delete(:capabilities)
+          opt[:capabilities] = [WebDriver::Remote::Capabilities.send(browser)]
+          opt[:capabilities] << options if options
+          opt[:url] = ENV['WD_REMOTE_URL'] || remote_server.webdriver_url
+          opt[:http_client] ||= WebDriver::Remote::Http::Default.new
+
+          WebDriver::Driver.for(:remote, opt)
         end
 
-        def create_firefox_driver
-          if native_events?
-            profile = WebDriver::Firefox::Profile.new
-            profile.native_events = true
-
-            WebDriver::Driver.for :firefox, :profile => profile
-          else
-            WebDriver::Driver.for :firefox
-          end
+        def create_firefox_driver(opt = {})
+          WebDriver::Firefox.path = ENV['FIREFOX_BINARY'] if ENV['FIREFOX_BINARY']
+          WebDriver::Driver.for :firefox, opt
         end
 
-        def create_chrome_driver
-          binary = ENV['chrome_binary']
-          if binary
-            WebDriver::Chrome.path = binary
-          end
-
-          server = ENV['chromedriver'] || ENV['chrome_server']
-          if server
-            WebDriver::Chrome.driver_path = server
-          end
-
-          args = []
-          args << "--no-sandbox" if ENV['TRAVIS']
-
-          WebDriver::Driver.for :chrome,
-                                :native_events => native_events?,
-                                :args          => args
+        def create_firefox_nightly_driver(opt = {})
+          ENV['FIREFOX_BINARY'] = ENV['FIREFOX_NIGHTLY_BINARY']
+          opt[:capabilities] = WebDriver::Firefox::Options.new(debugger_address: true)
+          create_firefox_driver(opt)
         end
 
-        def create_phantomjs_driver
-          binary = ENV['phantomjs_binary']
-          if binary
-            WebDriver::PhantomJS.path = binary
-          end
-
-          WebDriver::Driver.for :phantomjs
+        def create_ie_driver(opt = {})
+          opt[:capabilities] = WebDriver::IE::Options.new(require_window_focus: true)
+          WebDriver::Driver.for :ie, opt
         end
 
-        def create_iphone_driver
-          url = ENV['iphone_url']
-          if url
-            WebDriver::Driver.for :iphone, :url => url
-          else
-            WebDriver::Driver.for :iphone
-          end
+        def create_chrome_driver(opt = {})
+          WebDriver::Chrome.path = ENV['CHROME_BINARY'] if ENV['CHROME_BINARY']
+          WebDriver::Driver.for :chrome, opt
         end
 
-        def create_safari_driver
-          if ENV['timeout']
-            WebDriver::Driver.for :safari, :timeout => Integer(ENV['timeout'])
-          else
-            WebDriver::Driver.for :safari
-          end
+        def create_safari_preview_driver(opt = {})
+          WebDriver::Safari.technology_preview!
+          WebDriver::Driver.for :safari, opt
         end
 
-        def keep_alive_client
-          require 'selenium/webdriver/remote/http/persistent'
-          STDERR.puts "INFO: using net-http-persistent"
-
-          Selenium::WebDriver::Remote::Http::Persistent.new
-        rescue LoadError
-           # net-http-persistent not available
+        def create_edge_driver(opt = {})
+          WebDriver::Edge.path = ENV['EDGE_BINARY'] if ENV['EDGE_BINARY']
+          WebDriver::Driver.for :edge, opt
         end
-
-        def http_client
-          Selenium::WebDriver::Remote::Http::Default.new
-        end
-
-      end # TestEnvironment
+      end
     end # SpecSupport
   end # WebDriver
 end # Selenium

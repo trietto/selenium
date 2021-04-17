@@ -17,56 +17,60 @@
 
 package org.openqa.selenium.testing.drivers;
 
-import static org.openqa.selenium.testing.DevMode.isInDevMode;
-
-import com.google.common.base.Supplier;
-import com.google.common.base.Throwables;
-
 import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebDriverInfo;
+import org.openqa.selenium.htmlunit.HtmlUnitDriver;
+import org.openqa.selenium.remote.BrowserType;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.logging.Logger;
+import java.util.ServiceLoader;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class DefaultDriverSupplier implements Supplier<WebDriver> {
 
-  private static final Logger log = Logger.getLogger(DefaultDriverSupplier.class.getName());
-  private Class<? extends WebDriver> driverClass;
-  private final Capabilities desiredCapabilities;
-  private final Capabilities requiredCapabilities;
+  private final Capabilities capabilities;
 
-  public DefaultDriverSupplier(Capabilities desiredCapabilities,
-      Capabilities requiredCapabilities) {
-    this.desiredCapabilities = desiredCapabilities;
-    this.requiredCapabilities = requiredCapabilities;
-
-    try {
-      // Only support a default driver if we're actually in dev mode.
-      if (isInDevMode()) {
-        driverClass = Class.forName("org.openqa.selenium.testing.drivers.SynthesizedFirefoxDriver")
-            .asSubclass(WebDriver.class);
-      } else {
-        driverClass = null;
-      }
-    } catch (ClassNotFoundException e) {
-      log.severe("Unable to find the default class on the classpath. Tests will fail");
-    }
+  DefaultDriverSupplier(Capabilities capabilities) {
+    this.capabilities = capabilities;
   }
 
+  @Override
   public WebDriver get() {
-    log.info("Providing default driver instance");
+    Function<Capabilities, WebDriver> driverConstructor;
 
-    try {
-      return driverClass.getConstructor(Capabilities.class, Capabilities.class).
-          newInstance(desiredCapabilities, requiredCapabilities);
-    } catch (InstantiationException e) {
-      throw Throwables.propagate(e);
-    } catch (IllegalAccessException e) {
-      throw Throwables.propagate(e);
-    } catch (NoSuchMethodException e) {
-      throw Throwables.propagate(e);
-    } catch (InvocationTargetException e) {
-      throw Throwables.propagate(e.getTargetException());
+    if (capabilities != null) {
+      if (capabilities.getBrowserName().equals(BrowserType.HTMLUNIT)) {
+        return new HtmlUnitDriver();
+      }
+
+      return ServiceLoader.load(WebDriverInfo.class).stream()
+        .map(ServiceLoader.Provider::get)
+        .filter(WebDriverInfo::isAvailable)
+        .filter(info -> info.isSupporting(capabilities))
+        .findFirst()
+        .orElseThrow(() -> new RuntimeException("No driver can be provided for capabilities " + capabilities))
+        .createDriver(capabilities)
+        .orElseThrow(() -> new RuntimeException("Unable to create driver"));
+    } else {
+      String className = System.getProperty("selenium.browser.class_name");
+      try {
+        Class<? extends WebDriver> driverClass = Class.forName(className).asSubclass(WebDriver.class);
+        Constructor<? extends WebDriver> constructor = driverClass.getConstructor(Capabilities.class);
+        driverConstructor = caps -> {
+          try {
+            return constructor.newInstance(caps);
+          } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            throw new RuntimeException(e);
+          }
+        };
+      } catch (ClassNotFoundException | NoSuchMethodException e) {
+        throw new RuntimeException(e);
+      }
     }
+
+    return driverConstructor.apply(capabilities);
   }
 }

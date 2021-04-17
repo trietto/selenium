@@ -15,53 +15,47 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 package org.openqa.selenium.environment.webserver;
 
-import org.webbitserver.HttpControl;
-import org.webbitserver.HttpHandler;
-import org.webbitserver.HttpRequest;
-import org.webbitserver.HttpResponse;
-import org.webbitserver.helpers.Base64;
+import com.google.common.net.MediaType;
+import org.openqa.selenium.remote.http.Contents;
+import org.openqa.selenium.remote.http.HttpHandler;
+import org.openqa.selenium.remote.http.HttpRequest;
+import org.openqa.selenium.remote.http.HttpResponse;
+
+import java.io.UncheckedIOException;
+import java.net.HttpURLConnection;
+import java.util.Base64;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class BasicAuthHandler implements HttpHandler {
+  private static final String CREDENTIALS = "test:test";
+  private final Base64.Decoder decoder = Base64.getDecoder();
 
-  private final String validCredentials;
-
-  /**
-   * @param validCredentials username:password
-   */
-  public BasicAuthHandler(String validCredentials) {
-    this.validCredentials = validCredentials;
-  }
-
-  public void handleHttpRequest(HttpRequest request, HttpResponse response, HttpControl control)
-      throws Exception {
-    if (isAuthorized(request.header("Authorization"))) {
-      response
-          .header("Content-Type", "text/html")
-          .content("<h1>authorized</h1>")
-          .end();
-    } else {
-      response
-          .status(401)
-          .header("WWW-Authenticate", "Basic realm=\"basic-auth-test\"")
-          .content("Not authorized")
-          .end();
+  @Override
+  public HttpResponse execute(HttpRequest req) throws UncheckedIOException {
+    if (isAuthorized(req.getHeader("Authorization"))) {
+      return new HttpResponse()
+        .addHeader("Content-Type", MediaType.HTML_UTF_8.toString())
+        .setContent(Contents.string("<h1>authorized</h1>", UTF_8));
     }
+
+    return new HttpResponse()
+      .setStatus(HttpURLConnection.HTTP_UNAUTHORIZED)
+      .addHeader("WWW-Authenticate", "Basic realm=\"basic-auth-test\"");
   }
 
   private boolean isAuthorized(String auth) {
     if (auth != null) {
-      final int index = auth.indexOf(' ');
+      final int index = auth.indexOf(' ') + 1;
 
       if (index > 0) {
-        final String credentials = new String(Base64.decode(auth.substring(index)));
-        return validCredentials.equals(credentials);
+        final String credentials = new String(decoder.decode(auth.substring(index)), UTF_8);
+        return CREDENTIALS.equals(credentials);
       }
     }
 
     return false;
   }
-
 }

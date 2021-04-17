@@ -15,10 +15,15 @@
 // limitations under the License.
 
 #include "HookProcessor.h"
+
 #include <ctime>
 #include <vector>
 #include <Sddl.h>
+
 #include "logging.h"
+
+#include "RegistryUtilities.h"
+#include "StringUtilities.h"
 
 #define MAX_BUFFER_SIZE 32768
 #define NAMED_PIPE_BUFFER_SIZE 1024
@@ -29,6 +34,8 @@
 // Define a shared data segment.  Variables in this segment can be
 // shared across processes that load this DLL.
 #pragma data_seg("SHARED")
+bool flag = false;
+int event_count = 0;
 int data_buffer_size = MAX_BUFFER_SIZE;
 char data_buffer[MAX_BUFFER_SIZE];
 #pragma data_seg()
@@ -105,6 +112,52 @@ void HookProcessor::Initialize(const HookSettings& settings) {
   }
   bool is_hook_installed = this->InstallWindowsHook(settings.hook_procedure_name,
                                                     settings.hook_procedure_type);
+}
+
+bool HookProcessor::CanSetWindowsHook(HWND window_handle) {
+  int driver_bitness = 32;
+  HANDLE driver_process_handle = ::GetCurrentProcess();
+  if (Is64BitProcess(driver_process_handle)) {
+    driver_bitness = 64;
+  }
+  ::CloseHandle(driver_process_handle);
+
+  DWORD process_id;
+  DWORD thread_id = ::GetWindowThreadProcessId(window_handle, &process_id);
+  HANDLE browser_process_handle = ::OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, process_id);
+  int browser_bitness = 32;
+  if (Is64BitProcess(browser_process_handle)) {
+    browser_bitness = 64;
+  }
+
+  if (driver_bitness != browser_bitness) {
+    LOG(WARN) << "Unable to set Windows hook procedure. Driver is a "
+              << driver_bitness << "-bit process, but browser is a "
+              << browser_bitness << "-bit process.";
+  }
+  return driver_bitness == browser_bitness;
+}
+
+bool HookProcessor::Is64BitProcess(HANDLE process_handle) {
+  if (!RegistryUtilities::Is64BitWindows()) {
+    // A 64-bit process can never run on the 32-bit OS,
+    // so the process must be 32-bit.
+    return false;
+  }
+
+  // If the processor architecture is not x86, the process could
+  // be 64-bit, or it could be 32-bit. We still need to determine
+  // that.
+  BOOL is_emulated;
+  ::IsWow64Process(process_handle, &is_emulated);
+  if (!is_emulated) {
+    return true;
+  }
+
+  // The OS is 64-bit, but the process is running in the 
+  // Windows-on-Windows (Wow64) subsystem, so it must be a 64-bit
+  // process.
+  return false;
 }
 
 bool HookProcessor::InstallWindowsHook(const std::string& hook_proc_name,
@@ -267,6 +320,30 @@ int HookProcessor::PullData(std::vector<char>* data) {
     LOG(WARN) << "No connection received from browser via named pipe";
   }
   return static_cast<int>(data->size());
+}
+
+void HookProcessor::ResetFlag() {
+  flag = false;
+}
+
+bool HookProcessor::GetFlagValue(void) {
+  return flag;
+}
+
+void HookProcessor::SetFlagValue(bool flag_value) {
+  flag = flag_value;
+}
+
+int HookProcessor::GetEventCount() {
+  return event_count;
+}
+
+void HookProcessor::IncrementEventCount(int increment) {
+  event_count += increment;
+}
+
+void HookProcessor::ResetEventCount() {
+  event_count = 0;
 }
 
 int HookProcessor::GetDataBufferSize() {

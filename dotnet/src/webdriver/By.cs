@@ -17,7 +17,9 @@
 // </copyright>
 
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using OpenQA.Selenium.Internal;
 
@@ -28,13 +30,21 @@ namespace OpenQA.Selenium
     /// </summary>
     /// <remarks>It is possible to create your own locating mechanisms for finding documents.
     /// In order to do this,subclass this class and override the protected methods. However,
-    /// it is expected that that all subclasses rely on the basic finding mechanisms provided 
+    /// it is expected that that all subclasses rely on the basic finding mechanisms provided
     /// through static methods of this class. An example of this can be found in OpenQA.Support.ByIdOrName
     /// </remarks>
     [Serializable]
     public class By
     {
+        private static readonly string CssSelectorMechanism = "css selector";
+        private static readonly string XPathSelectorMechanism = "xpath";
+        private static readonly string TagNameMechanism = "tag name";
+        private static readonly string LinkTextMechanism = "link text";
+        private static readonly string PartialLinkTextMechanism = "partial link text";
+
         private string description = "OpenQA.Selenium.By";
+        private string mechanism = string.Empty;
+        private string criteria = string.Empty;
         private Func<ISearchContext, IWebElement> findElementMethod;
         private Func<ISearchContext, ReadOnlyCollection<IWebElement>> findElementsMethod;
 
@@ -46,17 +56,50 @@ namespace OpenQA.Selenium
         }
 
         /// <summary>
+        /// Intializes a new instance of the <see cref="By"/> class using the specified mechanism and critieria for finding elements.
+        /// </summary>
+        /// <param name="mechanism">The mechanism to use in finding elements.</param>
+        /// <param name="criteria">The criteria to use in finding elements.</param>
+        /// <remarks>
+        /// Customizing nothing else, instances using this constructor will attempt to find elemsnts
+        /// using the <see cref="IFindsElement.FindElement(string, string)"/> method, taking string arguments.
+        /// </remarks>
+        protected By(string mechanism, string criteria)
+        {
+            this.mechanism = mechanism;
+            this.criteria = criteria;
+            this.findElementMethod = (ISearchContext context) => ((IFindsElement)context).FindElement(this.mechanism, this.criteria);
+            this.findElementsMethod = (ISearchContext context) => ((IFindsElement)context).FindElements(this.mechanism, this.criteria);
+        }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="By"/> class using the given functions to find elements.
         /// </summary>
         /// <param name="findElementMethod">A function that takes an object implementing <see cref="ISearchContext"/>
         /// and returns the found <see cref="IWebElement"/>.</param>
-        /// <param name="findElementsMethod">A function that takes an object implementing <see cref="ISearchContext"/> 
+        /// <param name="findElementsMethod">A function that takes an object implementing <see cref="ISearchContext"/>
         /// and returns a <see cref="ReadOnlyCollection{T}"/> of the found<see cref="IWebElement">IWebElements</see>.
         /// <see cref="IWebElement">IWebElements</see>/>.</param>
         protected By(Func<ISearchContext, IWebElement> findElementMethod, Func<ISearchContext, ReadOnlyCollection<IWebElement>> findElementsMethod)
         {
             this.findElementMethod = findElementMethod;
             this.findElementsMethod = findElementsMethod;
+        }
+
+        /// <summary>
+        /// Gets the value of the mechanism for this <see cref="By"/> class instance.
+        /// </summary>
+        public string Mechanism
+        {
+            get { return this.mechanism; }
+        }
+
+        /// <summary>
+        /// Gets the value of the criteria for this <see cref="By"/> class instance.
+        /// </summary>
+        public string Criteria
+        {
+            get { return this.criteria; }
         }
 
         /// <summary>
@@ -84,185 +127,6 @@ namespace OpenQA.Selenium
         {
             get { return this.findElementsMethod; }
             set { this.findElementsMethod = value; }
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by their ID.
-        /// </summary>
-        /// <param name="idToFind">The ID to find.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        public static By Id(string idToFind) 
-        {
-            if (idToFind == null)
-            {
-                throw new ArgumentNullException("idToFind", "Cannot find elements with a null id attribute.");
-            }
-
-            By by = new By();
-            by.findElementMethod = (ISearchContext context) => ((IFindsById)context).FindElementById(idToFind);
-            by.findElementsMethod = (ISearchContext context) => ((IFindsById)context).FindElementsById(idToFind);
-
-            by.description = "By.Id: " + idToFind;
-            return by;
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by their link text.
-        /// </summary>
-        /// <param name="linkTextToFind">The link text to find.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        public static By LinkText(string linkTextToFind) 
-        {
-            if (linkTextToFind == null)
-            {
-                throw new ArgumentNullException("linkTextToFind", "Cannot find elements when link text is null.");
-            }
-
-            By by = new By();
-            by.findElementMethod =
-                (ISearchContext context) => ((IFindsByLinkText)context).FindElementByLinkText(linkTextToFind);
-            by.findElementsMethod =
-                (ISearchContext context) => ((IFindsByLinkText)context).FindElementsByLinkText(linkTextToFind);
-
-            by.description = "By.LinkText: " + linkTextToFind;
-            return by;
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by their name.
-        /// </summary>
-        /// <param name="nameToFind">The name to find.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        public static By Name(string nameToFind)
-        {
-            if (nameToFind == null)
-            {
-                throw new ArgumentNullException("nameToFind", "Cannot find elements when name text is null.");
-            }
-
-            By by = new By();
-            by.findElementMethod = (ISearchContext context) => ((IFindsByName)context).FindElementByName(nameToFind);
-            by.findElementsMethod = (ISearchContext context) => ((IFindsByName)context).FindElementsByName(nameToFind);
-
-            by.description = "By.Name: " + nameToFind;
-            return by;
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by an XPath query.
-        /// When searching within a WebElement using xpath be aware that WebDriver follows standard conventions:
-        /// a search prefixed with "//" will search the entire document, not just the children of this current node.
-        /// Use ".//" to limit your search to the children of this WebElement.
-        /// </summary>
-        /// <param name="xpathToFind">The XPath query to use.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        public static By XPath(string xpathToFind)
-        {
-            if (xpathToFind == null)
-            {
-                throw new ArgumentNullException("xpathToFind", "Cannot find elements when the XPath expression is null.");
-            }
-
-            By by = new By();
-            by.findElementMethod = (ISearchContext context) => ((IFindsByXPath)context).FindElementByXPath(xpathToFind);
-            by.findElementsMethod =
-                (ISearchContext context) => ((IFindsByXPath)context).FindElementsByXPath(xpathToFind);
-
-            by.description = "By.XPath: " + xpathToFind;
-            return by;
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by their CSS class.
-        /// </summary>
-        /// <param name="classNameToFind">The CSS class to find.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        /// <remarks>If an element has many classes then this will match against each of them.
-        /// For example if the value is "one two onone", then the following values for the 
-        /// className parameter will match: "one" and "two".</remarks>
-        public static By ClassName(string classNameToFind)
-        {
-            if (classNameToFind == null)
-            {
-                throw new ArgumentNullException("classNameToFind", "Cannot find elements when the class name expression is null.");
-            }
-
-            if (new Regex(".*\\s+.*").IsMatch(classNameToFind))
-            {
-                throw new IllegalLocatorException("Compound class names are not supported. Consider searching for one class name and filtering the results.");
-            }
-
-            By by = new By();
-            by.findElementMethod =
-                (ISearchContext context) => ((IFindsByClassName)context).FindElementByClassName(classNameToFind);
-            by.findElementsMethod =
-                (ISearchContext context) => ((IFindsByClassName)context).FindElementsByClassName(classNameToFind);
-
-            by.description = "By.ClassName[Contains]: " + classNameToFind;
-            return by;
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by a partial match on their link text.
-        /// </summary>
-        /// <param name="partialLinkTextToFind">The partial link text to find.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        public static By PartialLinkText(string partialLinkTextToFind)
-        {
-            By by = new By();
-            by.findElementMethod =
-                (ISearchContext context) =>
-                ((IFindsByPartialLinkText)context).FindElementByPartialLinkText(partialLinkTextToFind);
-            by.findElementsMethod =
-                (ISearchContext context) =>
-                ((IFindsByPartialLinkText)context).FindElementsByPartialLinkText(partialLinkTextToFind);
-
-            by.description = "By.PartialLinkText: " + partialLinkTextToFind;
-            return by;
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by their tag name.
-        /// </summary>
-        /// <param name="tagNameToFind">The tag name to find.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        public static By TagName(string tagNameToFind)
-        {
-            if (tagNameToFind == null)
-            {
-                throw new ArgumentNullException("tagNameToFind", "Cannot find elements when name tag name is null.");
-            }
-
-            By by = new By();
-            by.findElementMethod =
-                (ISearchContext context) => ((IFindsByTagName)context).FindElementByTagName(tagNameToFind);
-            by.findElementsMethod =
-                (ISearchContext context) => ((IFindsByTagName)context).FindElementsByTagName(tagNameToFind);
-
-            by.description = "By.TagName: " + tagNameToFind;
-            return by;
-        }
-
-        /// <summary>
-        /// Gets a mechanism to find elements by their cascading style sheet (CSS) selector.
-        /// </summary>
-        /// <param name="cssSelectorToFind">The CSS selector to find.</param>
-        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
-        public static By CssSelector(string cssSelectorToFind)
-        {
-            if (cssSelectorToFind == null)
-            {
-                throw new ArgumentNullException("cssSelectorToFind", "Cannot find elements when name CSS selector is null.");
-            }
-
-            By by = new By();
-            by.findElementMethod =
-                (ISearchContext context) => ((IFindsByCssSelector)context).FindElementByCssSelector(cssSelectorToFind);
-            by.findElementsMethod =
-                (ISearchContext context) => ((IFindsByCssSelector)context).FindElementsByCssSelector(cssSelectorToFind);
-
-            by.description = "By.CssSelector: " + cssSelectorToFind;
-            return by;
         }
 
         /// <summary>
@@ -300,6 +164,169 @@ namespace OpenQA.Selenium
         }
 
         /// <summary>
+        /// Gets a mechanism to find elements by their ID.
+        /// </summary>
+        /// <param name="idToFind">The ID to find.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        public static By Id(string idToFind)
+        {
+            if (idToFind == null)
+            {
+                throw new ArgumentNullException("idToFind", "Cannot find elements with a null id attribute.");
+            }
+
+            string selector = By.EscapeCssSelector(idToFind);
+            By by = new By(CssSelectorMechanism, "#" + selector);
+            by.description = "By.Id: " + idToFind;
+            if (string.IsNullOrEmpty(selector))
+            {
+                // Finding multiple elements with an empty ID will return
+                // an empty list. However, finding by a CSS selector of '#'
+                // throws an exception, even in the multiple elements case,
+                // which means we need to short-circuit that behavior.
+                by.findElementsMethod = (ISearchContext context) => new List<IWebElement>().AsReadOnly();
+            }
+
+            return by;
+        }
+
+        /// <summary>
+        /// Gets a mechanism to find elements by their link text.
+        /// </summary>
+        /// <param name="linkTextToFind">The link text to find.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        public static By LinkText(string linkTextToFind)
+        {
+            if (linkTextToFind == null)
+            {
+                throw new ArgumentNullException("linkTextToFind", "Cannot find elements when link text is null.");
+            }
+
+            By by = new By(LinkTextMechanism, linkTextToFind);
+            by.description = "By.LinkText: " + linkTextToFind;
+            return by;
+        }
+
+        /// <summary>
+        /// Gets a mechanism to find elements by their name.
+        /// </summary>
+        /// <param name="nameToFind">The name to find.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        public static By Name(string nameToFind)
+        {
+            if (nameToFind == null)
+            {
+                throw new ArgumentNullException("nameToFind", "Cannot find elements when name text is null.");
+            }
+
+            string selector = "*[name =\"" + By.EscapeCssSelector(nameToFind) + "\"]";
+            By by = new By(CssSelectorMechanism, selector);
+            by.description = "By.Name: " + nameToFind;
+            return by;
+        }
+
+        /// <summary>
+        /// Gets a mechanism to find elements by an XPath query.
+        /// When searching within a WebElement using xpath be aware that WebDriver follows standard conventions:
+        /// a search prefixed with "//" will search the entire document, not just the children of this current node.
+        /// Use ".//" to limit your search to the children of this WebElement.
+        /// </summary>
+        /// <param name="xpathToFind">The XPath query to use.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        public static By XPath(string xpathToFind)
+        {
+            if (xpathToFind == null)
+            {
+                throw new ArgumentNullException("xpathToFind", "Cannot find elements when the XPath expression is null.");
+            }
+
+            By by = new By(XPathSelectorMechanism, xpathToFind);
+            by.description = "By.XPath: " + xpathToFind;
+            return by;
+        }
+
+        /// <summary>
+        /// Gets a mechanism to find elements by their CSS class.
+        /// </summary>
+        /// <param name="classNameToFind">The CSS class to find.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        /// <remarks>If an element has many classes then this will match against each of them.
+        /// For example if the value is "one two onone", then the following values for the
+        /// className parameter will match: "one" and "two".</remarks>
+        public static By ClassName(string classNameToFind)
+        {
+            if (classNameToFind == null)
+            {
+                throw new ArgumentNullException("classNameToFind", "Cannot find elements when the class name expression is null.");
+            }
+
+            string selector = "." + By.EscapeCssSelector(classNameToFind);
+            if (selector.Contains(" "))
+            {
+                // Finding elements by class name with whitespace is not allowed.
+                // However, converting the single class name to a valid CSS selector
+                // by prepending a '.' may result in a still-valid, but incorrect
+                // selector. Thus, we short-ciruit that behavior here.
+                throw new InvalidSelectorException("Compound class names not allowed. Cannot have whitespace in class name. Use CSS selectors instead.");
+            }
+
+            By by = new By(CssSelectorMechanism, selector);
+            by.description = "By.ClassName[Contains]: " + classNameToFind;
+            return by;
+        }
+
+        /// <summary>
+        /// Gets a mechanism to find elements by a partial match on their link text.
+        /// </summary>
+        /// <param name="partialLinkTextToFind">The partial link text to find.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        public static By PartialLinkText(string partialLinkTextToFind)
+        {
+            if (partialLinkTextToFind == null)
+            {
+                throw new ArgumentNullException("partialLinkTextToFind", "Cannot find elements when partial link text is null.");
+            }
+
+            By by = new By(PartialLinkTextMechanism, partialLinkTextToFind);
+            by.description = "By.PartialLinkText: " + partialLinkTextToFind;
+            return by;
+        }
+
+        /// <summary>
+        /// Gets a mechanism to find elements by their tag name.
+        /// </summary>
+        /// <param name="tagNameToFind">The tag name to find.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        public static By TagName(string tagNameToFind)
+        {
+            if (tagNameToFind == null)
+            {
+                throw new ArgumentNullException("tagNameToFind", "Cannot find elements when name tag name is null.");
+            }
+
+            By by = new By(TagNameMechanism, tagNameToFind);
+            by.description = "By.TagName: " + tagNameToFind;
+            return by;
+        }
+
+        /// <summary>
+        /// Gets a mechanism to find elements by their cascading style sheet (CSS) selector.
+        /// </summary>
+        /// <param name="cssSelectorToFind">The CSS selector to find.</param>
+        /// <returns>A <see cref="By"/> object the driver can use to find the elements.</returns>
+        public static By CssSelector(string cssSelectorToFind)
+        {
+            if (cssSelectorToFind == null)
+            {
+                throw new ArgumentNullException("cssSelectorToFind", "Cannot find elements when name CSS selector is null.");
+            }
+
+            By by = new By(CssSelectorMechanism, cssSelectorToFind);
+            by.description = "By.CssSelector: " + cssSelectorToFind;
+            return by;
+        }
+
+        /// <summary>
         /// Finds the first element matching the criteria.
         /// </summary>
         /// <param name="context">An <see cref="ISearchContext"/> object to use to search for the elements.</param>
@@ -330,13 +357,13 @@ namespace OpenQA.Selenium
         }
 
         /// <summary>
-        /// Determines whether the specified <see cref="System.Object">Object</see> is equal 
-        /// to the current <see cref="System.Object">Object</see>.
+        /// Determines whether the specified <see cref="object">Object</see> is equal
+        /// to the current <see cref="object">Object</see>.
         /// </summary>
-        /// <param name="obj">The <see cref="System.Object">Object</see> to compare with the 
-        /// current <see cref="System.Object">Object</see>.</param>
-        /// <returns><see langword="true"/> if the specified <see cref="System.Object">Object</see>
-        /// is equal to the current <see cref="System.Object">Object</see>; otherwise,
+        /// <param name="obj">The <see cref="object">Object</see> to compare with the
+        /// current <see cref="object">Object</see>.</param>
+        /// <returns><see langword="true"/> if the specified <see cref="object">Object</see>
+        /// is equal to the current <see cref="object">Object</see>; otherwise,
         /// <see langword="false"/>.</returns>
         public override bool Equals(object obj)
         {
@@ -349,10 +376,26 @@ namespace OpenQA.Selenium
         /// <summary>
         /// Serves as a hash function for a particular type.
         /// </summary>
-        /// <returns>A hash code for the current <see cref="System.Object">Object</see>.</returns>
+        /// <returns>A hash code for the current <see cref="object">Object</see>.</returns>
         public override int GetHashCode()
         {
             return this.description.GetHashCode();
+        }
+
+        /// <summary>
+        /// Escapes invalid characters in a CSS selector.
+        /// </summary>
+        /// <param name="selector">The selector to escape.</param>
+        /// <returns>The selector with invalid characters escaped.</returns>
+        internal static string EscapeCssSelector(string selector)
+        {
+            string escaped = Regex.Replace(selector, @"([ '""\\#.:;,!?+<>=~*^$|%&@`{}\-/\[\]\(\)])", @"\$1");
+            if (selector.Length > 0 && char.IsDigit(selector[0]))
+            {
+                escaped = @"\" + (30 + int.Parse(selector.Substring(0, 1), CultureInfo.InvariantCulture)).ToString(CultureInfo.InvariantCulture) + " " + selector.Substring(1);
+            }
+
+            return escaped;
         }
     }
 }

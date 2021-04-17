@@ -26,15 +26,18 @@ import org.openqa.selenium.WebDriver;
 
 public class WaitForPopup extends SeleneseCommand<Void> {
   private final Windows windows;
+  private final Runnable sleepUntil;
 
-  public WaitForPopup(Windows windows) {
+  public WaitForPopup(Windows windows, Runnable sleepUntil) {
     this.windows = windows;
+    this.sleepUntil = sleepUntil;
   }
 
   @Override
-  protected Void handleSeleneseCommand(final WebDriver driver, final String windowID,
-      final String timeout) {
-    final long millis = getTimeout(timeout);
+  protected Void handleSeleneseCommand(WebDriver driver, String windowID, String timeout) {
+    sleepUntil.run();
+
+    final long millis = toLong(timeout);
     final String current = driver.getWindowHandle();
 
     new Wait() {

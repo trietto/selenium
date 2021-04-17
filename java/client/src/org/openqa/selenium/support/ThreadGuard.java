@@ -61,7 +61,7 @@ public class ThreadGuard {
       interfaces.addAll(Arrays.asList(base.getInterfaces()));
       base = base.getSuperclass();
     }
-    return interfaces.toArray(new Class[interfaces.size()]);
+    return interfaces.toArray(new Class[0]);
 
   }
 
@@ -79,6 +79,7 @@ public class ThreadGuard {
       this.underlying = underlyingWebDriver;
     }
 
+    @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
       try {
         if (Thread.currentThread().getId() != threadId) {

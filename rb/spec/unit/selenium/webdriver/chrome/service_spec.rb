@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -17,48 +17,170 @@
 # specific language governing permissions and limitations
 # under the License.
 
-require File.expand_path("../../spec_helper", __FILE__)
+require File.expand_path('../spec_helper', __dir__)
 
 module Selenium
   module WebDriver
-    module Chrome
+    describe Service do
+      describe '#new' do
+        let(:service_path) { "/path/to/#{Chrome::Service::EXECUTABLE}" }
 
-      describe Service do
-        let(:mock_process) do
-          double("ChildProcess", :io => double.as_null_object, :start => true)
+        before do
+          allow(Platform).to receive(:assert_executable).and_return(true)
         end
 
-        # ugh.
-        before { Service.instance_variable_set("@executable_path", nil) }
+        it 'uses default path and port' do
+          allow(Platform).to receive(:find_binary).and_return(service_path)
 
-        it "uses the user-provided path if set" do
-          Platform.stub(:os => :unix)
-          Platform.stub(:assert_executable).with("/some/path")
-          Chrome.driver_path = "/some/path"
+          service = Service.chrome
 
-          expect(ChildProcess).to receive(:build) do |*args|
-            args.first.should == "/some/path"
-            mock_process
-          end
-
-          Service.default_service.start_process
+          expect(service.executable_path).to include Chrome::Service::EXECUTABLE
+          expected_port = Chrome::Service::DEFAULT_PORT
+          expect(service.port).to eq expected_port
+          expect(service.host).to eq Platform.localhost
         end
 
-        it "finds the Chrome server binary by searching PATH" do
-          Platform.stub(:os => :unix)
-          Platform.should_receive(:find_binary).once.and_return("/some/path")
-          Platform.should_receive(:assert_executable).with("/some/path")
+        it 'uses provided path and port' do
+          path = 'foo'
+          port = 5678
 
-          Service.executable_path.should == "/some/path"
+          service = Service.chrome(path: path, port: port)
+
+          expect(service.executable_path).to eq path
+          expect(service.port).to eq port
+          expect(service.host).to eq Platform.localhost
         end
 
-        it "raises a nice error if the server binary can't be found" do
-          Platform.stub(:find_binary).and_return(nil)
+        it 'allows #driver_path= with String value' do
+          path = '/path/to/driver'
+          Chrome::Service.driver_path = path
 
-          lambda { Service.executable_path }.should raise_error(Error::WebDriverError, /github.com\/SeleniumHQ/)
+          service = Service.chrome
+
+          expect(service.executable_path).to eq path
         end
 
+        it 'allows #driver_path= with Proc value' do
+          path = '/path/to/driver'
+          proc = proc { path }
+          Chrome::Service.driver_path = proc
+
+          service = Service.chrome
+
+          expect(service.executable_path).to eq path
+        end
+
+        it 'accepts Chrome#driver_path= and Chrome#driver_path but throws deprecation notices' do
+          path = '/path/to/driver'
+
+          expect {
+            Selenium::WebDriver::Chrome.driver_path = path
+          }.to have_deprecated(:driver_path)
+
+          expect {
+            expect(Selenium::WebDriver::Chrome.driver_path).to eq path
+          }.to have_deprecated(:driver_path)
+
+          service = Service.chrome
+
+          expect(service.executable_path).to eq path
+        end
+
+        it 'does not create args by default' do
+          allow(Platform).to receive(:find_binary).and_return(service_path)
+
+          service = Service.chrome
+
+          expect(service.extra_args).to be_empty
+        end
+
+        it 'uses provided args' do
+          allow(Platform).to receive(:find_binary).and_return(service_path)
+
+          service = Service.chrome(args: ['--foo', '--bar'])
+
+          expect(service.extra_args).to eq ['--foo', '--bar']
+        end
+
+        # This is deprecated behavior
+        it 'uses args when passed in as a Hash' do
+          allow(Platform).to receive(:find_binary).and_return(service_path)
+
+          service = Service.chrome(args: {log_path: '/path/to/log',
+                                          verbose: true})
+
+          expect(service.extra_args).to eq ['--log-path=/path/to/log', '--verbose']
+        end
       end
-    end # Chrome
+
+      context 'when initializing driver' do
+        let(:driver) { Chrome::Driver }
+        let(:service) { instance_double(Service, launch: service_manager) }
+        let(:service_manager) { instance_double(ServiceManager, uri: 'http://example.com') }
+        let(:bridge) { instance_double(Remote::Bridge, quit: nil, create_session: {}) }
+
+        before do
+          allow(Remote::Bridge).to receive(:new).and_return(bridge)
+          allow(bridge).to receive(:browser).and_return(:chrome)
+        end
+
+        it 'is not created when :url is provided' do
+          expect(Service).not_to receive(:new)
+
+          driver.new(url: 'http://example.com:4321')
+        end
+
+        it 'is created when :url is not provided' do
+          allow(Service).to receive(:new).and_return(service)
+
+          driver.new
+          expect(Service).to have_received(:new).with(hash_excluding(url: anything))
+        end
+
+        it 'accepts :driver_path but throws deprecation notice' do
+          driver_path = '/path/to/driver'
+
+          allow(Service).to receive(:new).with(path: driver_path,
+                                               port: nil,
+                                               args: nil).and_return(service)
+
+          expect {
+            driver.new(driver_path: driver_path)
+          }.to have_deprecated(:service_driver_path)
+        end
+
+        it 'accepts :port but throws deprecation notice' do
+          driver_port = 1234
+
+          allow(Service).to receive(:new).with(path: nil,
+                                               port: driver_port,
+                                               args: nil).and_return(service)
+
+          expect {
+            driver.new(port: driver_port)
+          }.to have_deprecated(:service_port)
+        end
+
+        it 'accepts :driver_opts but throws deprecation notice' do
+          driver_opts = {foo: 'bar',
+                         bar: ['--foo', '--bar']}
+
+          allow(Service).to receive(:new).with(path: nil,
+                                               port: nil,
+                                               args: driver_opts).and_return(service)
+
+          expect {
+            driver.new(driver_opts: driver_opts)
+          }.to have_deprecated(:service_driver_opts)
+        end
+
+        it 'accepts :service without creating a new instance' do
+          allow(Service).to receive(:new)
+
+          driver.new(service: service)
+          expect(Service).not_to have_received(:new)
+        end
+      end
+    end
   end # WebDriver
 end # Selenium

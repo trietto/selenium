@@ -15,27 +15,27 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 package org.openqa.selenium.environment.webserver;
 
-import org.webbitserver.HttpControl;
-import org.webbitserver.HttpHandler;
-import org.webbitserver.HttpRequest;
-import org.webbitserver.HttpResponse;
+import org.openqa.selenium.remote.http.HttpHandler;
+import org.openqa.selenium.remote.http.HttpRequest;
+import org.openqa.selenium.remote.http.HttpResponse;
+import org.openqa.selenium.remote.http.UrlPath;
+
+import java.io.UncheckedIOException;
+
+import static java.net.HttpURLConnection.HTTP_MOVED_TEMP;
+import static org.openqa.selenium.remote.http.Contents.utf8String;
 
 public class RedirectHandler implements HttpHandler {
 
-  private final String destination;
+  @Override
+  public HttpResponse execute(HttpRequest req) throws UncheckedIOException {
+    String targetLocation = UrlPath.relativeToContext(req, "resultPage.html");
 
-  public RedirectHandler(String destination) {
-    this.destination = destination;
-  }
-
-  public void handleHttpRequest(HttpRequest request, HttpResponse response, HttpControl control)
-      throws Exception {
-    response
-        .status(302)
-        .header("Location", destination)
-        .end();
+    return new HttpResponse()
+      .setStatus(HTTP_MOVED_TEMP)
+      .setHeader("Location", targetLocation)
+      .setContent(utf8String(""));
   }
 }

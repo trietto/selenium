@@ -17,6 +17,9 @@
 #ifndef WEBDRIVER_HOOKPROCESSOR_H_
 #define WEBDRIVER_HOOKPROCESSOR_H_
 
+#include <string>
+#include <vector>
+
 namespace webdriver {
 
 enum HookCommunicationType {
@@ -40,6 +43,14 @@ class HookProcessor {
   static void SetDataBufferSize(int size);
   static void* GetDataBufferAddress(void);
 
+  static int GetEventCount(void);
+  static void ResetEventCount(void);
+  static void IncrementEventCount(int increment);
+
+  static void ResetFlag(void);
+  static bool GetFlagValue(void);
+  static void SetFlagValue(bool flag_value);
+
   static void CopyDataToBuffer(int source_data_size, void* source);
   static void CopyDataFromBuffer(int destination_data_size, void* destination);
   static void CopyWStringToBuffer(const std::wstring& data);
@@ -47,6 +58,7 @@ class HookProcessor {
 
   static void WriteBufferToPipe(const int process_id);
 
+  bool CanSetWindowsHook(HWND window_handle);
   void Initialize(const HookSettings& settings);
   void Initialize(const std::string& hook_proc_name, const int hook_proc_type);
   void Dispose(void);
@@ -65,6 +77,7 @@ class HookProcessor {
   bool InstallWindowsHook(const std::string& hook_proc_name,
                           const int hook_proc_type);
   void UninstallWindowsHook(void);
+  bool Is64BitProcess(HANDLE process_handle);
 
   HookCommunicationType communication_type_;
   HWND window_handle_;

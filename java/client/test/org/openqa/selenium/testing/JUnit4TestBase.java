@@ -17,121 +17,57 @@
 
 package org.openqa.selenium.testing;
 
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.junit.Assert.assertThat;
-
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
-import org.junit.rules.TestName;
-import org.junit.rules.TestRule;
-import org.junit.rules.TestWatcher;
-import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.openqa.selenium.Pages;
+import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.environment.GlobalTestEnvironment;
 import org.openqa.selenium.environment.InProcessTestEnvironment;
 import org.openqa.selenium.environment.TestEnvironment;
 import org.openqa.selenium.environment.webserver.AppServer;
-import org.openqa.selenium.internal.WrapsDriver;
-import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.Wait;
-import org.openqa.selenium.support.ui.WebDriverWait;
-import org.openqa.selenium.testing.drivers.WebDriverBuilder;
 
-import java.util.logging.Logger;
+import static org.assertj.core.api.Assumptions.assumeThat;
 
 @RunWith(SeleniumTestRunner.class)
-public abstract class JUnit4TestBase implements WrapsDriver {
+public abstract class JUnit4TestBase {
 
-  private static final Logger logger = Logger.getLogger(JUnit4TestBase.class.getName());
+  @Rule
+  public SeleniumTestRule seleniumTestRule = new SeleniumTestRule();
 
   protected TestEnvironment environment;
   protected AppServer appServer;
   protected Pages pages;
-  private static ThreadLocal<WebDriver> storedDriver = new ThreadLocal<>();
   protected WebDriver driver;
   protected Wait<WebDriver> wait;
   protected Wait<WebDriver> shortWait;
 
+  @BeforeClass
+  public static void shouldTestBeRunAtAll() {
+    assumeThat(Boolean.getBoolean("selenium.skiptest")).isFalse();
+  }
+
   @Before
-  public void prepareEnvironment() throws Exception {
-    environment = GlobalTestEnvironment.get(InProcessTestEnvironment.class);
+  public void prepareEnvironment() {
+    environment = GlobalTestEnvironment.getOrCreate(InProcessTestEnvironment::new);
     appServer = environment.getAppServer();
 
     pages = new Pages(appServer);
 
-    String hostName = environment.getAppServer().getHostName();
-    String alternateHostName = environment.getAppServer().getAlternateHostName();
-
-    assertThat(hostName, is(not(equalTo(alternateHostName))));
+    driver = seleniumTestRule.getDriver();
+    wait = seleniumTestRule::waitUntil;
+    shortWait = seleniumTestRule::shortWaitUntil;
   }
 
-  @Before
-  public void createDriver() throws Exception {
-    driver = actuallyCreateDriver();
-    wait = new WebDriverWait(driver, 30);
-    shortWait = new WebDriverWait(driver, 5);
+  public void createNewDriver(Capabilities capabilities) {
+    driver = seleniumTestRule.createNewDriver(capabilities);
+    wait = seleniumTestRule::waitUntil;
+    shortWait = seleniumTestRule::shortWaitUntil;
   }
 
-  @Rule
-  public TestName testName = new TestName();
-
-  @Rule
-  public TestRule traceMethodName = new TestWatcher() {
-    @Override
-    protected void starting(Description description) {
-      super.starting(description);
-      logger.info(">>> Starting " + description);
-    }
-
-    @Override
-    protected void finished(Description description) {
-      super.finished(description);
-      logger.info("<<< Finished " + description);
-    }
-  };
-
-  public WebDriver getWrappedDriver() {
-    return storedDriver.get();
+  public void removeDriver() {
+    seleniumTestRule.removeDriver();
   }
-
-  public static WebDriver actuallyCreateDriver() {
-    WebDriver driver = storedDriver.get();
-
-    if (driver == null ||
-        (driver instanceof RemoteWebDriver && ((RemoteWebDriver)driver).getSessionId() == null)) {
-      driver = new WebDriverBuilder().get();
-      storedDriver.set(driver);
-    }
-    return storedDriver.get();
-  }
-
-  public static void removeDriver() {
-    if (Boolean.getBoolean("webdriver.singletestsuite.leaverunning")) {
-      return;
-    }
-
-    WebDriver current = storedDriver.get();
-
-    if (current == null) {
-      return;
-    }
-
-    try {
-      current.quit();
-    } catch (RuntimeException ignored) {
-      // fall through
-    }
-
-    storedDriver.remove();
-  }
-
-  protected boolean isIeDriverTimedOutException(IllegalStateException e) {
-    // The IE driver may throw a timed out exception
-    return e.getClass().getName().contains("TimedOutException");
-  }
-
 }

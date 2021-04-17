@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -17,24 +17,32 @@
 # specific language governing permissions and limitations
 # under the License.
 
+require_relative '../spec_helper'
+
 module Selenium
   module WebDriver
     module Firefox
+      describe Driver, exclusive: {browser: :firefox} do
+        describe '#print_options' do
+          let(:magic_number) { 'JVBER' }
 
-      describe Driver do
-        describe ".new" do
-          it "should take a Firefox::Profile instance as argument" do
-            begin
-              profile = Selenium::WebDriver::Firefox::Profile.new
-              driver = Selenium::WebDriver.for :firefox, :profile => profile
-            ensure
-              driver.quit if driver
-            end
+          before { driver.navigate.to url_for('printPage.html') }
+
+          it 'should return base64 for print command' do
+            expect(driver.print_page).to include(magic_number)
+          end
+
+          it 'should print with orientation' do
+            expect(driver.print_page(orientation: 'landscape')).to include(magic_number)
+          end
+
+          it 'should print with valid params' do
+            expect(driver.print_page(orientation: 'landscape',
+                                     page_ranges: ['1-2'],
+                                     page: {width: 30})).to include(magic_number)
           end
         end
       end
-
     end # Firefox
   end # WebDriver
 end # Selenium
-

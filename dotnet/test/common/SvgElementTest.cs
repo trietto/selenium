@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text;
 using NUnit.Framework;
 
 namespace OpenQA.Selenium
@@ -11,8 +9,6 @@ namespace OpenQA.Selenium
     {
         [Test]
         [IgnoreBrowser(Browser.Opera, "Not tested")]
-        [IgnoreBrowser(Browser.HtmlUnit, "SVG tests only in rendered browsers")]
-        [IgnoreBrowser(Browser.Safari, "Not supported by driver")]
         public void ShouldClickOnGraphVisualElements()
         {
             if (TestUtilities.IsOldIE(driver))
@@ -28,19 +24,17 @@ namespace OpenQA.Selenium
 
             groupElements[1].Click();
             IWebElement resultElement = driver.FindElement(By.Id("result"));
-            WaitFor(() => { return resultElement.Text == "slice_red"; });
+            WaitFor(() => { return resultElement.Text == "slice_red"; }, "Element text was not 'slice_red'");
             Assert.AreEqual("slice_red", resultElement.Text);
 
             groupElements[2].Click();
             resultElement = driver.FindElement(By.Id("result"));
-            WaitFor(() => { return resultElement.Text == "slice_green"; });
+            WaitFor(() => { return resultElement.Text == "slice_green"; }, "Element text was not 'slice_green'");
             Assert.AreEqual("slice_green", resultElement.Text);
         }
 
         [Test]
         [IgnoreBrowser(Browser.Opera, "Not tested")]
-        [IgnoreBrowser(Browser.HtmlUnit, "SVG tests only in rendered browsers")]
-        [IgnoreBrowser(Browser.Safari, "Not supported by driver")]
         public void ShouldClickOnGraphTextElements()
         {
             if (TestUtilities.IsOldIE(driver))
@@ -53,11 +47,11 @@ namespace OpenQA.Selenium
             ReadOnlyCollection<IWebElement> textElements = svg.FindElements(By.CssSelector("text"));
 
             IWebElement appleElement = FindAppleElement(textElements);
-            Assert.IsNotNull(appleElement);
+            Assert.That(appleElement, Is.Not.Null);
 
             appleElement.Click();
             IWebElement resultElement = driver.FindElement(By.Id("result"));
-            WaitFor(() => { return resultElement.Text == "text_apple"; });
+            WaitFor(() => { return resultElement.Text == "text_apple"; }, "Element text was not 'text_apple'");
             Assert.AreEqual("text_apple", resultElement.Text);
         }
 

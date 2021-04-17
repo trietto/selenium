@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -20,7 +20,6 @@
 module Selenium
   module WebDriver
     module Chrome
-
       #
       # @private
       #
@@ -29,15 +28,14 @@ module Selenium
         include ProfileHelper
 
         def initialize(model = nil)
-          @model      = verify_model(model)
+          @model = verify_model(model)
           @extensions = []
           @encoded_extensions = []
+          @directory = nil
         end
 
         def add_extension(path)
-          unless File.file?(path)
-            raise Error::WebDriverError, "could not find extension at #{path.inspect}"
-          end
+          raise Error::WebDriverError, "could not find extension at #{path.inspect}" unless File.file?(path)
 
           @extensions << path
         end
@@ -46,39 +44,45 @@ module Selenium
           @encoded_extensions << encoded
         end
 
+        def directory
+          @directory || layout_on_disk
+        end
+
         #
         # Set a preference in the profile.
         #
-        # See https://src.chromium.org/svn/trunk/src/chrome/common/pref_names.cc
+        # See https://src.chromium.org/viewvc/chrome/trunk/src/chrome/common/pref_names.cc
         #
 
         def []=(key, value)
-          parts = key.split(".")
-          parts[0..-2].inject(prefs) { |pr, k| pr[k] ||= {} }[parts.last] = value
+          parts = key.split('.')
+          parts[0..-2].inject(prefs) { |a, e| a[e] ||= {} }[parts.last] = value
         end
 
         def [](key)
-          parts = key.split(".")
-          parts.inject(prefs) { |pr, k| pr.fetch(k) }
+          parts = key.split('.')
+          parts.inject(prefs) { |a, e| a.fetch(e) }
         end
 
         def layout_on_disk
-          dir = @model ? create_tmp_copy(@model) : Dir.mktmpdir("webdriver-chrome-profile")
-          FileReaper << dir
+          @directory = @model ? create_tmp_copy(@model) : Dir.mktmpdir('webdriver-chrome-profile')
+          FileReaper << @directory
 
-          write_prefs_to dir
+          write_prefs_to @directory
 
-          dir
+          @directory
         end
 
-        def as_json(opts = nil)
+        def as_json(*)
           extensions = @extensions.map do |crx_path|
-            File.open(crx_path, "rb") { |crx_file| Base64.strict_encode64 crx_file.read }
+            File.open(crx_path, 'rb') { |crx_file| Base64.strict_encode64 crx_file.read }
           end
 
           extensions.concat(@encoded_extensions)
 
-          super.merge('extensions' => extensions)
+          opts = {'directory' => directory || layout_on_disk}
+          opts['extensions'] = extensions if extensions.any?
+          opts
         end
 
         private
@@ -87,7 +91,7 @@ module Selenium
           prefs_file = prefs_file_for(dir)
 
           FileUtils.mkdir_p File.dirname(prefs_file)
-          File.open(prefs_file, "w") { |file| file << WebDriver.json_dump(prefs)  }
+          File.open(prefs_file, 'w') { |file| file << JSON.generate(prefs) }
         end
 
         def prefs
@@ -96,14 +100,14 @@ module Selenium
 
         def read_model_prefs
           return {} unless @model
-          WebDriver.json_load File.read(prefs_file_for(@model))
+
+          JSON.parse File.read(prefs_file_for(@model))
         end
 
         def prefs_file_for(dir)
           File.join dir, 'Default', 'Preferences'
         end
       end # Profile
-
     end # Chrome
   end # WebDriver
 end # Selenium

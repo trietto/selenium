@@ -15,19 +15,18 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import abc
+from abc import ABCMeta, abstractmethod
 import os
-from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.utils import keys_to_typing
 
 
-class FileDetector(object):
+class FileDetector(metaclass=ABCMeta):
     """
     Used for identifying whether a sequence of chars represents the path to a
     file.
     """
-    __metaclass__ = abc.ABCMeta
 
-    @abc.abstractmethod
+    @abstractmethod
     def is_local_file(self, *keys):
         return
 
@@ -36,6 +35,7 @@ class UselessFileDetector(FileDetector):
     """
     A file detector that never finds anything.
     """
+
     def is_local_file(self, *keys):
         return None
 
@@ -44,27 +44,16 @@ class LocalFileDetector(FileDetector):
     """
     Detects files on the local disk.
     """
-    def is_local_file(self, *keys):
-        file_path = ''
-        typing = []
-        for val in keys:
-            if isinstance(val, Keys):
-                typing.append(val)
-            elif isinstance(val, int):
-                val = val.__str__()
-                for i in range(len(val)):
-                    typing.append(val[i])
-            else:
-                for i in range(len(val)):
-                    typing.append(val[i])
-        file_path = ''.join(typing)
 
-        if file_path is '':
+    def is_local_file(self, *keys):
+        file_path = ''.join(keys_to_typing(keys))
+
+        if not file_path:
             return None
 
         try:
             if os.path.isfile(file_path):
                 return file_path
-        except:
+        except Exception:
             pass
         return None

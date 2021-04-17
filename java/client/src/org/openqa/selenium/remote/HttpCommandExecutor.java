@@ -17,78 +17,94 @@
 
 package org.openqa.selenium.remote;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static org.openqa.selenium.remote.DriverCommand.GET_ALL_SESSIONS;
-import static org.openqa.selenium.remote.DriverCommand.NEW_SESSION;
-import static org.openqa.selenium.remote.DriverCommand.QUIT;
-
-import com.google.common.collect.ImmutableMap;
-
+import org.openqa.selenium.NoSuchSessionException;
+import org.openqa.selenium.SessionNotCreatedException;
 import org.openqa.selenium.UnsupportedCommandException;
 import org.openqa.selenium.WebDriverException;
+import org.openqa.selenium.internal.Require;
 import org.openqa.selenium.logging.LocalLogs;
 import org.openqa.selenium.logging.LogEntry;
 import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.logging.NeedsLocalLogs;
 import org.openqa.selenium.logging.profiler.HttpProfilerLogEntry;
+import org.openqa.selenium.remote.http.ClientConfig;
 import org.openqa.selenium.remote.http.HttpClient;
 import org.openqa.selenium.remote.http.HttpRequest;
 import org.openqa.selenium.remote.http.HttpResponse;
-import org.openqa.selenium.remote.http.JsonHttpCommandCodec;
-import org.openqa.selenium.remote.http.JsonHttpResponseCodec;
-import org.openqa.selenium.remote.internal.ApacheHttpClient;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
 
-public class HttpCommandExecutor implements CommandExecutor, NeedsLocalLogs {
+import static java.util.Collections.emptyMap;
+import static org.openqa.selenium.json.Json.JSON_UTF_8;
+import static org.openqa.selenium.remote.DriverCommand.GET_ALL_SESSIONS;
+import static org.openqa.selenium.remote.DriverCommand.NEW_SESSION;
+import static org.openqa.selenium.remote.DriverCommand.QUIT;
+import static org.openqa.selenium.remote.HttpSessionId.getSessionId;
 
-  private static HttpClient.Factory defaultClientFactory;
+public class HttpCommandExecutor implements CommandExecutor, NeedsLocalLogs {
 
   private final URL remoteServer;
   private final HttpClient client;
-  private final JsonHttpCommandCodec commandCodec;
-  private final JsonHttpResponseCodec responseCodec;
+  private final HttpClient.Factory httpClientFactory;
+  private final Map<String, CommandInfo> additionalCommands;
+  private CommandCodec<HttpRequest> commandCodec;
+  private ResponseCodec<HttpResponse> responseCodec;
 
   private LocalLogs logs = LocalLogs.getNullLogger();
 
+  private static class DefaultClientFactoryHolder {
+    static HttpClient.Factory defaultClientFactory = HttpClient.Factory.createDefault();
+  }
+
+  public static HttpClient.Factory getDefaultClientFactory() {
+    return DefaultClientFactoryHolder.defaultClientFactory;
+  }
+
   public HttpCommandExecutor(URL addressOfRemoteServer) {
-    this(ImmutableMap.<String, CommandInfo>of(), addressOfRemoteServer);
+    this(emptyMap(), Require.nonNull("Server URL", addressOfRemoteServer));
+  }
+
+  public HttpCommandExecutor(ClientConfig config) {
+    this(emptyMap(),
+      Require.nonNull("HTTP client configuration", config),
+      getDefaultClientFactory());
+  }
+
+  /**
+   * Creates an {@link HttpCommandExecutor} that supports non-standard
+   * {@code additionalCommands} in addition to the standard.
+   *
+   * @param additionalCommands additional commands to allow the command executor to process
+   * @param addressOfRemoteServer URL of remote end Selenium server
+   */
+  public HttpCommandExecutor(
+    Map<String, CommandInfo> additionalCommands,
+    URL addressOfRemoteServer) {
+    this(Require.nonNull("Additional commands", additionalCommands),
+      Require.nonNull("Server URL", addressOfRemoteServer),
+      getDefaultClientFactory());
   }
 
   public HttpCommandExecutor(
-      Map<String, CommandInfo> additionalCommands, URL addressOfRemoteServer) {
-    this(additionalCommands, addressOfRemoteServer, getDefaultClientFactory());
+    Map<String, CommandInfo> additionalCommands,
+    URL addressOfRemoteServer,
+    HttpClient.Factory httpClientFactory) {
+    this(additionalCommands,
+         ClientConfig.defaultConfig()
+           .baseUrl(Require.nonNull("Server URL", addressOfRemoteServer)),
+         httpClientFactory);
   }
 
   public HttpCommandExecutor(
-      Map<String, CommandInfo> additionalCommands,
-      URL addressOfRemoteServer,
-      HttpClient.Factory httpClientFactory) {
-    try {
-      remoteServer = addressOfRemoteServer == null
-          ? new URL(System.getProperty("webdriver.remote.server", "http://localhost:4444/wd/hub"))
-          : addressOfRemoteServer;
-    } catch (MalformedURLException e) {
-      throw new WebDriverException(e);
-    }
-
-    commandCodec = new JsonHttpCommandCodec();
-    responseCodec = new JsonHttpResponseCodec();
-    client = httpClientFactory.createClient(remoteServer);
-
-    for (Map.Entry<String, CommandInfo> entry : additionalCommands.entrySet()) {
-      defineCommand(entry.getKey(), entry.getValue());
-    }
-  }
-
-  private static synchronized HttpClient.Factory getDefaultClientFactory() {
-    if (defaultClientFactory == null) {
-      defaultClientFactory = new ApacheHttpClient.Factory();
-    }
-    return defaultClientFactory;
+    Map<String, CommandInfo> additionalCommands,
+    ClientConfig config,
+    HttpClient.Factory httpClientFactory) {
+    remoteServer = Require.nonNull("HTTP client configuration", config).baseUrl();
+    this.additionalCommands = Require.nonNull("Additional commands", additionalCommands);
+    this.httpClientFactory = Require.nonNull("HTTP client factory", httpClientFactory);
+    this.client = this.httpClientFactory.createClient(config);
   }
 
   /**
@@ -97,13 +113,15 @@ public class HttpCommandExecutor implements CommandExecutor, NeedsLocalLogs {
    * for subclasses only to call this.
    *
    * @param commandName The name of the command to use.
+   * @param info CommandInfo for the command name provided
    */
   protected void defineCommand(String commandName, CommandInfo info) {
-    checkNotNull(commandName);
-    checkNotNull(info);
+    Require.nonNull("Command name", commandName);
+    Require.nonNull("Command info", info);
     commandCodec.defineCommand(commandName, info.getMethod(), info.getUrl());
   }
 
+  @Override
   public void setLocalLogs(LocalLogs logs) {
     this.logs = logs;
   }
@@ -116,6 +134,7 @@ public class HttpCommandExecutor implements CommandExecutor, NeedsLocalLogs {
     return remoteServer;
   }
 
+  @Override
   public Response execute(Command command) throws IOException {
     if (command.getSessionId() == null) {
       if (QUIT.equals(command.getName())) {
@@ -123,28 +142,64 @@ public class HttpCommandExecutor implements CommandExecutor, NeedsLocalLogs {
       }
       if (!GET_ALL_SESSIONS.equals(command.getName())
           && !NEW_SESSION.equals(command.getName())) {
-        throw new SessionNotFoundException(
-            "Session ID is null. Using WebDriver after calling quit()?");
+        throw new NoSuchSessionException(
+          "Session ID is null. Using WebDriver after calling quit()?");
       }
     }
 
+    if (NEW_SESSION.equals(command.getName())) {
+      if (commandCodec != null) {
+        throw new SessionNotCreatedException("Session already exists");
+      }
+      ProtocolHandshake handshake = new ProtocolHandshake();
+      log(LogType.PROFILER, new HttpProfilerLogEntry(command.getName(), true));
+      ProtocolHandshake.Result result = handshake.createSession(client, command);
+      Dialect dialect = result.getDialect();
+      commandCodec = dialect.getCommandCodec();
+      for (Map.Entry<String, CommandInfo> entry : additionalCommands.entrySet()) {
+        defineCommand(entry.getKey(), entry.getValue());
+      }
+      responseCodec = dialect.getResponseCodec();
+      log(LogType.PROFILER, new HttpProfilerLogEntry(command.getName(), false));
+      return result.createResponse();
+    }
+
+    if (commandCodec == null || responseCodec == null) {
+      throw new WebDriverException(
+        "No command or response codec has been defined. Unable to proceed");
+    }
+
     HttpRequest httpRequest = commandCodec.encode(command);
+
+    // Ensure that we set the required headers
+    if (httpRequest.getHeader("Content-Type") == null) {
+      httpRequest.addHeader("Content-Type", JSON_UTF_8);
+    }
+
     try {
       log(LogType.PROFILER, new HttpProfilerLogEntry(command.getName(), true));
-      HttpResponse httpResponse = client.execute(httpRequest, true);
+      HttpResponse httpResponse = client.execute(httpRequest);
       log(LogType.PROFILER, new HttpProfilerLogEntry(command.getName(), false));
 
       Response response = responseCodec.decode(httpResponse);
-      if (response.getSessionId() == null && httpResponse.getTargetHost() != null) {
-        String sessionId = HttpSessionId.getSessionId(httpResponse.getTargetHost());
-        response.setSessionId(sessionId);
+      if (response.getSessionId() == null) {
+        if (httpResponse.getTargetHost() != null) {
+          response.setSessionId(getSessionId(httpResponse.getTargetHost()).orElse(null));
+        } else {
+          // Spam in the session id from the request
+          response.setSessionId(command.getSessionId().toString());
+        }
+      }
+      if (QUIT.equals(command.getName())) {
+        client.close();
+        httpClientFactory.cleanupIdleClients();
       }
       return response;
     } catch (UnsupportedCommandException e) {
       if (e.getMessage() == null || "".equals(e.getMessage())) {
         throw new UnsupportedOperationException(
-            "No information from server. Command name was: " + command.getName(),
-            e.getCause());
+          "No information from server. Command name was: " + command.getName(),
+          e.getCause());
       }
       throw e;
     }

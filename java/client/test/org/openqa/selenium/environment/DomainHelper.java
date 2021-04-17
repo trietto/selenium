@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 package org.openqa.selenium.environment;
 
-import org.openqa.selenium.environment.webserver.AppServer;
+import com.google.common.net.InetAddresses;
 
-import com.google.common.base.Preconditions;
+import org.openqa.selenium.environment.webserver.AppServer;
+import org.openqa.selenium.internal.Require;
 
 public class DomainHelper {
 
@@ -31,15 +31,15 @@ public class DomainHelper {
   }
 
   public String getUrlForFirstValidHostname(String path) {
-    Preconditions.checkArgument(
-      isValidHostname(appServer.getHostName()),
-      "Expected valid hostname but was %s",
-      appServer.getHostName());
+    Require.precondition(
+        isValidHostname(appServer.getHostName()),
+        "Expected valid hostname but was %s",
+        appServer.getHostName());
     return appServer.whereIs(path);
   }
 
   public String getSecureUrlForFirstValidHostname(String path) {
-    Preconditions.checkArgument(
+    Require.precondition(
         isValidHostname(appServer.getHostName()),
         "Expected valid hostname but was %s",
         appServer.getHostName());
@@ -47,7 +47,7 @@ public class DomainHelper {
   }
 
   public String getUrlForSecondValidHostname(String path) {
-    Preconditions.checkArgument(
+    Require.precondition(
       isValidHostname(appServer.getAlternateHostName()),
       "Expected valid hostname but was %s",
       appServer.getAlternateHostName());
@@ -91,12 +91,13 @@ public class DomainHelper {
     return hostname.split("\\.").length >= 3;
   }
 
-  private boolean isIpv4Address(String string) {
-    return string.matches("\\d{1,3}(?:\\.\\d{1,3}){3}");
-  }
-
   public boolean isValidHostname(String hostname) {
-    return !isIpv4Address(hostname) && !"localhost".equals(hostname);
+    // Strip the IPv6 zone index, if present. For example, "fe80::1%eth0" becomes "fe80::1".
+    int zoneIndexStart = hostname.indexOf('%');
+    if (zoneIndexStart >= 0) {
+      hostname = hostname.substring(0, zoneIndexStart);
+    }
+    return !InetAddresses.isInetAddress(hostname) && !"localhost".equals(hostname);
   }
 
   public String getHostName() {

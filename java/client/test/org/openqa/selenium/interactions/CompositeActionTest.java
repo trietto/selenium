@@ -17,35 +17,16 @@
 
 package org.openqa.selenium.interactions;
 
-import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.experimental.categories.Category;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
+import org.openqa.selenium.testing.UnitTests;
 
-/**
- * Tests the CompositeAction class
- *
- */
-@RunWith(JUnit4.class)
+@Category(UnitTests.class)
 public class CompositeActionTest {
-
-  @Test
-  public void addingActions() {
-    CompositeAction sequence = new CompositeAction();
-    final Action dummyAction1 = mock(Action.class);
-    final Action dummyAction2 = mock(Action.class, "dummy2");
-    final Action dummyAction3 = mock(Action.class, "dummy3");
-
-    sequence.addAction(dummyAction1)
-        .addAction(dummyAction2)
-        .addAction(dummyAction3);
-
-    assertEquals(3, sequence.getNumberOfActions());
-  }
 
   @Test
   public void invokingActions() {

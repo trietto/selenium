@@ -17,16 +17,15 @@
 
 package org.openqa.selenium;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
-import static org.openqa.selenium.testing.Ignore.Driver.CHROME;
-import static org.openqa.selenium.testing.Ignore.Driver.FIREFOX;
-import static org.openqa.selenium.testing.Ignore.Driver.HTMLUNIT;
-import static org.openqa.selenium.testing.Ignore.Driver.IE;
-import static org.openqa.selenium.testing.Ignore.Driver.MARIONETTE;
+import static org.openqa.selenium.testing.drivers.Browser.CHROME;
+import static org.openqa.selenium.testing.drivers.Browser.EDGE;
+import static org.openqa.selenium.testing.drivers.Browser.LEGACY_FIREFOX_XPI;
+import static org.openqa.selenium.testing.drivers.Browser.HTMLUNIT;
+import static org.openqa.selenium.testing.drivers.Browser.IE;
+import static org.openqa.selenium.testing.drivers.Browser.FIREFOX;
 
 import org.junit.Test;
 import org.openqa.selenium.environment.GlobalTestEnvironment;
@@ -35,9 +34,7 @@ import org.openqa.selenium.testing.JUnit4TestBase;
 import org.openqa.selenium.testing.NotYetImplemented;
 import org.openqa.selenium.testing.TestUtilities;
 
-import java.util.Arrays;
 import java.util.List;
-
 
 public class I18nTest extends JUnit4TestBase {
 
@@ -58,14 +55,17 @@ public class I18nTest extends JUnit4TestBase {
    */
   private static final String tokyo = "\u6771\u4EAC";
 
-  @Ignore({MARIONETTE})
+  /**
+   * Chinese for "The Voice of China"
+   */
+  private static final String theVoiceOfChina = "\u4E2D\u56FD\u4E4B\u58F0";
+
   @Test
   public void testCn() {
     driver.get(pages.chinesePage);
-    driver.findElement(By.linkText(Messages.getString("I18nTest.link1"))).click();
+    driver.findElement(By.linkText(theVoiceOfChina)).click();
   }
 
-  @Ignore({MARIONETTE})
   @Test
   public void testEnteringHebrewTextFromLeftToRight() {
     driver.get(pages.chinesePage);
@@ -73,10 +73,9 @@ public class I18nTest extends JUnit4TestBase {
 
     input.sendKeys(shalom);
 
-    assertEquals(shalom, input.getAttribute("value"));
+    assertThat(input.getAttribute("value")).isEqualTo(shalom);
   }
 
-  @Ignore({MARIONETTE})
   @Test
   public void testEnteringHebrewTextFromRightToLeft() {
     driver.get(pages.chinesePage);
@@ -84,22 +83,16 @@ public class I18nTest extends JUnit4TestBase {
 
     input.sendKeys(tmunot);
 
-    assertEquals(tmunot, input.getAttribute("value"));
+    assertThat(input.getAttribute("value")).isEqualTo(tmunot);
   }
 
   @Test
-  @Ignore(
-      value = {MARIONETTE, CHROME},
-      reason = "MARIONETTE: not checked, "
-               + "CHROME: ChromeDriver only supports characters in the BMP")
+  @Ignore(value = CHROME, reason = "ChromeDriver only supports characters in the BMP")
+  @Ignore(value = EDGE, reason = "EdgeDriver only supports characters in the BMP")
   public void testEnteringSupplementaryCharacters() {
     assumeFalse("IE: versions less thank 10 have issue 5069",
                 TestUtilities.isInternetExplorer(driver) &&
                 TestUtilities.getIEVersion(driver) < 10);
-    assumeFalse("FF: native events at linux broke it - see issue 5069",
-                TestUtilities.isFirefox(driver) &&
-                TestUtilities.isNativeEventsEnabled(driver) &&
-                TestUtilities.getEffectivePlatform().is(Platform.LINUX));
     driver.get(pages.chinesePage);
 
     String input = "";
@@ -112,12 +105,10 @@ public class I18nTest extends JUnit4TestBase {
     WebElement el = driver.findElement(By.name("i18n"));
     el.sendKeys(input);
 
-    assertEquals(input, el.getAttribute("value"));
+    assertThat(el.getAttribute("value")).isEqualTo(input);
   }
 
-  @NeedsFreshDriver
   @Test
-  @Ignore(MARIONETTE)
   public void testShouldBeAbleToReturnTheTextInAPage() {
     String url = GlobalTestEnvironment.get()
         .getAppServer()
@@ -126,20 +117,19 @@ public class I18nTest extends JUnit4TestBase {
 
     String text = driver.findElement(By.tagName("body")).getText();
 
-    assertEquals(shalom, text);
+    assertThat(text).isEqualTo(shalom);
   }
 
-  @NeedsFreshDriver
-  @Ignore(value = {IE, CHROME, FIREFOX},
-      reason = "Not implemented on anything other than"
-          + "Firefox/Linux at the moment.")
-  @NotYetImplemented(HTMLUNIT)
   @Test
+  @Ignore(IE)
+  @Ignore(CHROME)
+  @Ignore(EDGE)
+  @Ignore(LEGACY_FIREFOX_XPI)
+  @Ignore(FIREFOX)
+  @NotYetImplemented(HTMLUNIT)
   public void testShouldBeAbleToActivateIMEEngine() throws InterruptedException {
     assumeTrue("IME is supported on Linux only.",
-               TestUtilities.getEffectivePlatform().is(Platform.LINUX));
-    assumeTrue("Native events are disabled, IME will not work.",
-               TestUtilities.isNativeEventsEnabled(driver));
+               TestUtilities.getEffectivePlatform(driver).is(Platform.LINUX));
 
     driver.get(pages.formPage);
 
@@ -163,34 +153,33 @@ public class I18nTest extends JUnit4TestBase {
       Thread.sleep(500);
       totalWaits++;
     }
-    assertTrue("IME Engine should be activated.", ime.isActivated());
-    assertEquals(desiredEngine, ime.getActiveEngine());
+    assertThat(ime.isActivated()).isTrue();
+    assertThat(ime.getActiveEngine()).isEqualTo(desiredEngine);
 
-    // Send the Romaji for "Tokyo". The space at the end instructs the IME to convert the word.
+    // Send the Romaji for "Tokyo". The space at the end instructs the IME to transform the word.
     input.sendKeys("toukyou ");
     input.sendKeys(Keys.ENTER);
 
     String elementValue = input.getAttribute("value");
 
     ime.deactivate();
-    assertFalse("IME engine should be off.", ime.isActivated());
+    assertThat(ime.isActivated()).isFalse();
 
     // IME is not present. Don't fail because of that. But it should have the Romaji value
     // instead.
-    assertTrue("The elemnt's value should either remain in Romaji or be converted properly."
-        + " It was:" + elementValue, elementValue.equals(tokyo));
+    assertThat(elementValue)
+        .describedAs("The elemnt's value should either remain in Romaji or be converted properly.")
+        .isEqualTo(tokyo);
   }
 
-  @Ignore(value = {IE, CHROME},
-      reason = "Not implemented on anything other than"
-          + "Firefox/Linux at the moment.")
-  @NotYetImplemented(HTMLUNIT)
   @Test
+  @Ignore(IE)
+  @Ignore(CHROME)
+  @Ignore(EDGE)
+  @Ignore(LEGACY_FIREFOX_XPI)
   public void testShouldBeAbleToInputJapanese() {
     assumeTrue("IME is supported on Linux only.",
-               TestUtilities.getEffectivePlatform().is(Platform.LINUX));
-    assumeTrue("Native events are disabled, IME will not work.",
-               TestUtilities.isNativeEventsEnabled(driver));
+               TestUtilities.getEffectivePlatform(driver).is(Platform.LINUX));
 
     driver.get(pages.formPage);
 
@@ -199,7 +188,7 @@ public class I18nTest extends JUnit4TestBase {
     // Activate IME. By default, this keycode activates IBus input for Japanese.
     input.sendKeys(Keys.ZENKAKU_HANKAKU);
 
-    // Send the Romaji for "Tokyo". The space at the end instructs the IME to convert the word.
+    // Send the Romaji for "Tokyo". The space at the end instructs the IME to transform the word.
     input.sendKeys("toukyou ");
 
     String elementValue = input.getAttribute("value");
@@ -208,9 +197,9 @@ public class I18nTest extends JUnit4TestBase {
 
     // IME is not present. Don't fail because of that. But it should have the Romaji value
     // instead.
-    String[] possibleValues = {tokyo, "\uE040" + "toukyou ", "toukyou "};
-    assertTrue("The element's value should either remain in Romaji or be converted properly."
-        + " It was: -" + elementValue + "-", Arrays.asList(possibleValues).contains(elementValue));
+    assertThat(elementValue)
+        .describedAs("The element's value should either remain in Romaji or be converted properly.")
+        .isIn(tokyo, "\uE040" + "toukyou ", "toukyou ");
   }
 
 }

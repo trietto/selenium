@@ -17,15 +17,14 @@
 // </copyright>
 
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text;
 
 namespace OpenQA.Selenium.Internal
 {
     /// <summary>
     /// Defines the interface through which the user finds elements by their CSS class.
     /// </summary>
+    [Obsolete("The internal IFindsBy interfaces are being deprecated in favor of common implementation.")]
     public interface IFindsByClassName
     {
         /// <summary>

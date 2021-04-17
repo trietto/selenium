@@ -29,6 +29,7 @@ goog.provide('bot.ErrorCode');
  * https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#response-status-codes
  *
  * @enum {number}
+ * @suppress {lintChecks}
  */
 bot.ErrorCode = {
   SUCCESS: 0,  // Included for completeness
@@ -60,6 +61,7 @@ bot.ErrorCode = {
   SQL_DATABASE_ERROR: 35,
   INVALID_XPATH_SELECTOR: 51,
   INVALID_XPATH_SELECTOR_RETURN_TYPE: 52,
+  INVALID_ARGUMENT: 61,
   // The following error codes are derived straight from HTTP return codes.
   METHOD_NOT_ALLOWED: 405
 };
@@ -73,7 +75,7 @@ bot.ErrorCode = {
  * @constructor
  * @extends {Error}
  */
-bot.Error = function(code, opt_message) {
+bot.Error = function (code, opt_message) {
 
   /**
    * This error's status code.
@@ -83,12 +85,12 @@ bot.Error = function(code, opt_message) {
 
   /** @type {string} */
   this.state =
-      bot.Error.CODE_TO_STATE_[code] || bot.Error.State.UNKNOWN_ERROR;
+    bot.Error.CODE_TO_STATE_[code] || bot.Error.State.UNKNOWN_ERROR;
 
   /** @override */
   this.message = opt_message || '';
 
-  var name = this.state.replace(/((?:^|\s+)[a-z])/g, function(str) {
+  var name = this.state.replace(/((?:^|\s+)[a-z])/g, function (str) {
     // IE<9 does not support String#trim(). Also, IE does not include 0xa0
     // (the non-breaking-space) in the \s character class, so we have to
     // explicitly include it.
@@ -152,7 +154,7 @@ bot.Error.State = {
  * @private {!Object.<bot.ErrorCode, bot.Error.State>}
  */
 bot.Error.CODE_TO_STATE_ = {};
-goog.scope(function() {
+goog.scope(function () {
   var map = bot.Error.CODE_TO_STATE_;
   var code = bot.ErrorCode;
   var state = bot.Error.State;
@@ -179,7 +181,7 @@ goog.scope(function() {
   map[code.STALE_ELEMENT_REFERENCE] = state.STALE_ELEMENT_REFERENCE;
   map[code.TIMEOUT] = state.TIMEOUT;
   map[code.UNABLE_TO_SET_COOKIE] = state.UNABLE_TO_SET_COOKIE;
-  map[code.UNEXPECTED_ALERT_OPEN] = state.UNEXPECTED_ALERT_OPEN
+  map[code.UNEXPECTED_ALERT_OPEN] = state.UNEXPECTED_ALERT_OPEN;
   map[code.UNKNOWN_ERROR] = state.UNKNOWN_ERROR;
   map[code.UNSUPPORTED_OPERATION] = state.UNKNOWN_COMMAND;
 });  // goog.scope
@@ -195,8 +197,11 @@ bot.Error.prototype.isAutomationError = true;
 
 
 if (goog.DEBUG) {
-  /** @return {string} The string representation of this error. */
-  bot.Error.prototype.toString = function() {
+  /**
+   * @override
+   * @return {string} The string representation of this error.
+   */
+  bot.Error.prototype.toString = function () {
     return this.name + ': ' + this.message;
   };
 }

@@ -56,10 +56,7 @@
  *   picasa.setSelected(true);
  * </pre>
  *
- *
- * @supported IE6, FF2+, Safari. Requires flash to actually work.
- *
- * TODO(user): test on other browsers
+ * Requires flash to actually work.
  */
 
 goog.provide('goog.ui.media.PicasaAlbum');
@@ -132,9 +129,7 @@ goog.ui.media.PicasaAlbum.CSS_CLASS = goog.getCssName('goog-ui-media-picasa');
  */
 goog.ui.media.PicasaAlbum.newControl = function(dataModel, opt_domHelper) {
   var control = new goog.ui.media.Media(
-      dataModel,
-      goog.ui.media.PicasaAlbum.getInstance(),
-      opt_domHelper);
+      dataModel, goog.ui.media.PicasaAlbum.getInstance(), opt_domHelper);
   control.setSelected(true);
   return control;
 };
@@ -154,11 +149,8 @@ goog.ui.media.PicasaAlbum.prototype.createDom = function(c) {
 
   var picasaAlbum =
       /** @type {goog.ui.media.PicasaAlbumModel} */ (control.getDataModel());
-  var authParam =
-      picasaAlbum.getAuthKey() ? ('&authkey=' + picasaAlbum.getAuthKey()) : '';
   var flash = new goog.ui.media.FlashObject(
-      picasaAlbum.getPlayer().getTrustedResourceUrl(),
-      control.getDomHelper());
+      picasaAlbum.getPlayer().getTrustedResourceUrl(), control.getDomHelper());
   flash.addFlashVars(picasaAlbum.getPlayer().getVars());
   flash.render(div);
 
@@ -194,18 +186,11 @@ goog.ui.media.PicasaAlbum.prototype.getCssClass = function() {
  * @extends {goog.ui.media.MediaModel}
  * @final
  */
-goog.ui.media.PicasaAlbumModel = function(userId,
-                                          albumId,
-                                          opt_authKey,
-                                          opt_caption,
-                                          opt_description,
-                                          opt_autoplay) {
+goog.ui.media.PicasaAlbumModel = function(
+    userId, albumId, opt_authKey, opt_caption, opt_description, opt_autoplay) {
   goog.ui.media.MediaModel.call(
-      this,
-      goog.ui.media.PicasaAlbumModel.buildUrl(userId, albumId),
-      opt_caption,
-      opt_description,
-      goog.ui.media.MediaModel.MimeType.FLASH);
+      this, goog.ui.media.PicasaAlbumModel.buildUrl(userId, albumId),
+      opt_caption, opt_description, goog.ui.media.MediaModel.MimeType.FLASH);
 
   /**
    * The Picasa user id.
@@ -233,14 +218,14 @@ goog.ui.media.PicasaAlbumModel = function(userId,
   var flashVars = {
     'host': 'picasaweb.google.com',
     'RGB': '0x000000',
-    'feed': 'http://picasaweb.google.com/data/feed/api/user/' +
-        userId + '/album/' + albumId + '?kind=photo&alt=rss' + authParam
+    'feed': 'https://picasaweb.google.com/data/feed/api/user/' + userId +
+        '/album/' + albumId + '?kind=photo&alt=rss' + authParam
   };
   flashVars[opt_autoplay ? 'autoplay' : 'noautoplay'] = '1';
 
   var flashUrl = goog.html.TrustedResourceUrl.fromConstant(
       goog.string.Const.from(
-          'http://picasaweb.google.com/s/c/bin/slideshow.swf'));
+          'https://picasaweb.google.com/s/c/bin/slideshow.swf'));
   var player = new goog.ui.media.MediaModel.Player(flashUrl, flashVars);
 
   this.setPlayer(player);
@@ -274,10 +259,8 @@ goog.ui.media.PicasaAlbumModel.MATCHER_ =
  *     represents the picasa URL.
  * @throws exception in case the parsing fails
  */
-goog.ui.media.PicasaAlbumModel.newInstance = function(picasaUrl,
-                                                      opt_caption,
-                                                      opt_description,
-                                                      opt_autoplay) {
+goog.ui.media.PicasaAlbumModel.newInstance = function(
+    picasaUrl, opt_caption, opt_description, opt_autoplay) {
   if (goog.ui.media.PicasaAlbumModel.MATCHER_.test(picasaUrl)) {
     var data = goog.ui.media.PicasaAlbumModel.MATCHER_.exec(picasaUrl);
     return new goog.ui.media.PicasaAlbumModel(
@@ -296,7 +279,7 @@ goog.ui.media.PicasaAlbumModel.newInstance = function(picasaUrl,
  * @return {string} The URL of the album.
  */
 goog.ui.media.PicasaAlbumModel.buildUrl = function(userId, albumId) {
-  return 'http://picasaweb.google.com/' + userId + '/' + albumId;
+  return 'https://picasaweb.google.com/' + userId + '/' + albumId;
 };
 
 

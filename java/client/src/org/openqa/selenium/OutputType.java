@@ -17,16 +17,14 @@
 
 package org.openqa.selenium;
 
-import org.openqa.selenium.internal.Base64Encoder;
-
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 
 /**
- * Defines the output type for a screenshot. See org.openqa.selenium.Screenshot for usage and
- * examples.
+ * Defines the output type for a screenshot.
  *
  * @see TakesScreenshot
  * @param <T> Type for the screenshot output.
@@ -36,12 +34,14 @@ public interface OutputType<T> {
    * Obtain the screenshot as base64 data.
    */
   OutputType<String> BASE64 = new OutputType<String>() {
+    @Override
     public String convertFromBase64Png(String base64Png) {
       return base64Png;
     }
 
+    @Override
     public String convertFromPngBytes(byte[] png) {
-      return new Base64Encoder().encode(png);
+      return Base64.getEncoder().encodeToString(png);
     }
 
     public String toString() {
@@ -53,10 +53,12 @@ public interface OutputType<T> {
    * Obtain the screenshot as raw bytes.
    */
   OutputType<byte[]> BYTES = new OutputType<byte[]>() {
+    @Override
     public byte[] convertFromBase64Png(String base64Png) {
-      return new Base64Encoder().decode(base64Png);
+      return Base64.getMimeDecoder().decode(base64Png);
     }
 
+    @Override
     public byte[] convertFromPngBytes(byte[] png) {
       return png;
     }
@@ -71,35 +73,25 @@ public interface OutputType<T> {
    * to users to make a copy of this file.
    */
   OutputType<File> FILE = new OutputType<File>() {
+    @Override
     public File convertFromBase64Png(String base64Png) {
       return save(BYTES.convertFromBase64Png(base64Png));
     }
 
+    @Override
     public File convertFromPngBytes(byte[] data) {
       return save(data);
     }
 
     private File save(byte[] data) {
-      OutputStream stream = null;
-
       try {
-        File tmpFile = File.createTempFile("screenshot", ".png");
+        Path tmpFilePath = Files.createTempFile("screenshot", ".png");
+        File tmpFile = tmpFilePath.toFile();
         tmpFile.deleteOnExit();
-
-        stream = new FileOutputStream(tmpFile);
-        stream.write(data);
-
+        Files.write(tmpFilePath, data);
         return tmpFile;
       } catch (IOException e) {
         throw new WebDriverException(e);
-      } finally {
-        if (stream != null) {
-          try {
-            stream.close();
-          } catch (IOException e) {
-            // Nothing sane to do
-          }
-        }
       }
     }
 

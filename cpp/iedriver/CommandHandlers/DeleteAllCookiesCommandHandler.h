@@ -17,46 +17,19 @@
 #ifndef WEBDRIVER_IE_DELETEALLCOOKIESCOMMANDHANDLER_H_
 #define WEBDRIVER_IE_DELETEALLCOOKIESCOMMANDHANDLER_H_
 
-#include "../Browser.h"
-#include "../BrowserCookie.h"
 #include "../IECommandHandler.h"
-#include "../IECommandExecutor.h"
 
 namespace webdriver {
 
 class DeleteAllCookiesCommandHandler : public IECommandHandler {
  public:
-  DeleteAllCookiesCommandHandler(void) {
-  }
-
-  virtual ~DeleteAllCookiesCommandHandler(void) {
-  }
+  DeleteAllCookiesCommandHandler(void);
+  virtual ~DeleteAllCookiesCommandHandler(void);
 
  protected:
   void ExecuteInternal(const IECommandExecutor& executor,
                        const ParametersMap& command_parameters,
-                       Response* response) {
-    BrowserHandle browser_wrapper;
-    int status_code = executor.GetCurrentBrowser(&browser_wrapper);
-    if (status_code != WD_SUCCESS) {
-      response->SetErrorResponse(status_code, "Unable to get browser");
-      return;
-    }
-
-    std::vector<BrowserCookie> cookies;
-    browser_wrapper->GetCookies(&cookies);
-    std::vector<BrowserCookie>::const_iterator it = cookies.begin();
-    for (; it != cookies.end(); ++it) {
-      status_code = browser_wrapper->DeleteCookie(*it);
-      if (status_code != WD_SUCCESS) {
-        response->SetErrorResponse(status_code,
-                                   "Unable to delete cookie with name '" + it->name() + "'");
-        return;
-      }
-    }
-
-    response->SetSuccessResponse(Json::Value::null);
-  }
+                       Response* response);
 };
 
 } // namespace webdriver

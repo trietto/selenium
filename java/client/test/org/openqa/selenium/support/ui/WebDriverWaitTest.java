@@ -17,25 +17,39 @@
 
 package org.openqa.selenium.support.ui;
 
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.experimental.categories.Category;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.openqa.selenium.By;
+import org.openqa.selenium.Capabilities;
+import org.openqa.selenium.MutableCapabilities;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.NoSuchFrameException;
 import org.openqa.selenium.NoSuchWindowException;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.WrapsDriver;
+import org.openqa.selenium.remote.Command;
+import org.openqa.selenium.remote.CommandExecutor;
+import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.remote.Response;
+import org.openqa.selenium.remote.SessionId;
+import org.openqa.selenium.testing.UnitTests;
 
-@RunWith(JUnit4.class)
+import java.io.IOException;
+import java.time.Duration;
+
+@Category(UnitTests.class)
 public class WebDriverWaitTest {
 
   @Mock private WebDriver mockDriver;
@@ -47,16 +61,43 @@ public class WebDriverWaitTest {
   }
 
   @Test
-  public void shouldThrowAnExceptionIfTheTimerRunsOut() {
-    TickingClock clock = new TickingClock(200);
-    WebDriverWait wait = new WebDriverWait(mockDriver, clock, clock, 1, 200);
+  public void shouldIncludeRemoteInfoForWrappedDriverTimeout() throws IOException {
+    Capabilities caps = new MutableCapabilities();
+    Response response = new Response(new SessionId("foo"));
+    response.setValue(caps.asMap());
+    CommandExecutor executor = mock(CommandExecutor.class);
+    when(executor.execute(any(Command.class))).thenReturn(response);
 
-    try {
-      wait.until(new FalseExpectation());
-      fail();
-    } catch (TimeoutException e) {
-      // this is expected
-    }
+    RemoteWebDriver driver = new RemoteWebDriver(executor, caps);
+    WebDriver testDriver = mock(WebDriver.class, withSettings().extraInterfaces(WrapsDriver.class));
+    when(((WrapsDriver) testDriver).getWrappedDriver()).thenReturn(driver);
+
+    TickingClock clock = new TickingClock();
+    WebDriverWait wait =
+        new WebDriverWait(testDriver, Duration.ofSeconds(1), Duration.ofMillis(200), clock, clock);
+
+    assertThatExceptionOfType(TimeoutException.class)
+        .isThrownBy(() -> wait.until(d -> false))
+        .withMessageContaining("Capabilities {javascriptEnabled: true, platform: ANY, platformName: ANY}")
+        .withMessageContaining("Session ID: foo");
+  }
+
+  @Test
+  public void shouldThrowAnExceptionIfTheTimerRunsOut() {
+    TickingClock clock = new TickingClock();
+    WebDriverWait wait =
+        new WebDriverWait(mockDriver, Duration.ofSeconds(1), Duration.ofMillis(200), clock, clock);
+
+    assertThatExceptionOfType(TimeoutException.class)
+        .isThrownBy(() -> wait.until(d -> false));
+  }
+
+  @Test
+  public void shouldThrowAnExceptionFromCorrectThreadIfTheTimerRunsOut() {
+    WebDriverWait wait = new WebDriverWait(mockDriver, Duration.ofSeconds(1));
+    assertThatExceptionOfType(TimeoutException.class)
+      .isThrownBy(() -> wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.cssSelector(".doesntexist"))))
+      .withStackTraceContaining(this.getClass().getName());
   }
 
   @SuppressWarnings("unchecked")
@@ -67,9 +108,10 @@ public class WebDriverWaitTest {
         .thenThrow(new NoSuchElementException("foo"))
         .thenReturn(mockElement);
 
-    TickingClock clock = new TickingClock(500);
-    Wait<WebDriver> wait = new WebDriverWait(mockDriver, clock, clock, 5, 500);
-    assertSame(mockElement, wait.until(condition));
+    TickingClock clock = new TickingClock();
+    Wait<WebDriver> wait =
+        new WebDriverWait(mockDriver, Duration.ofSeconds(5), Duration.ofMillis(500), clock, clock);
+    assertThat(wait.until(condition)).isSameAs(mockElement);
   }
 
   @SuppressWarnings("unchecked")
@@ -80,8 +122,9 @@ public class WebDriverWaitTest {
         .thenThrow(new NoSuchFrameException("foo"))
         .thenReturn(mockElement);
 
-    TickingClock clock = new TickingClock(500);
-    Wait<WebDriver> wait = new WebDriverWait(mockDriver, clock, clock, 5, 500);
+    TickingClock clock = new TickingClock();
+    Wait<WebDriver> wait =
+        new WebDriverWait(mockDriver, Duration.ofSeconds(5), Duration.ofMillis(500), clock, clock);
     wait.until(condition);
   }
 
@@ -94,15 +137,9 @@ public class WebDriverWaitTest {
         .thenThrow(new NoSuchWindowException("foo"))
         .thenReturn(mockElement);
 
-    TickingClock clock = new TickingClock(500);
-    Wait<WebDriver> wait = new WebDriverWait(mockDriver, clock, clock, 5, 500);
+    TickingClock clock = new TickingClock();
+    Wait<WebDriver> wait =
+        new WebDriverWait(mockDriver, Duration.ofSeconds(5), Duration.ofMillis(500), clock, clock);
     wait.until(condition);
   }
-
-  private static class FalseExpectation implements ExpectedCondition<Boolean> {
-    public Boolean apply(WebDriver driver) {
-      return false;
-    }
-  }
 }
-

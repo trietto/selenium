@@ -33,7 +33,7 @@ public interface NetworkConnection {
 
   /**
    * ConnectionType is a bitmask to represent a device's network connection
-   * <p><pre>
+   * <pre>
    * Data  | WIFI | Airplane
    * 0       0      1         == 1
    * 1       1      0         == 6
@@ -45,7 +45,7 @@ public interface NetworkConnection {
    * <p>Giving "Data" the first bit positions in order to give room for the future of enabling
    * specific types of data (Edge / 2G, 3G, 4G, LTE, etc) if the device allows it.
    */
-  public class ConnectionType {
+  class ConnectionType {
 
     public static final ConnectionType WIFI = new ConnectionType(2);
     public static final ConnectionType DATA = new ConnectionType(4);
@@ -57,7 +57,6 @@ public interface NetworkConnection {
     Future for Network Data types. With a new constructor accepting this enum.
     public enum DataType {
       _2G, _3G, _4G, LTE
-
     }
     */
 
@@ -109,6 +108,9 @@ public interface NetworkConnection {
       return Integer.toString(mask);
     }
 
+    public Integer toJson() {
+      return mask;
+    }
   }
 
   /**
@@ -117,7 +119,7 @@ public interface NetworkConnection {
    * @return {@link org.openqa.selenium.mobile.NetworkConnection.ConnectionType} indicating if the
    * device is in Airplane Mode
    */
-  public ConnectionType getNetworkConnection();
+  ConnectionType getNetworkConnection();
 
   /**
    * Set the Connection type Not all connection type combinations are valid for an individual type
@@ -127,6 +129,6 @@ public interface NetworkConnection {
    * @return {@link org.openqa.selenium.mobile.NetworkConnection.ConnectionType} of what the
    * device's network connection is
    */
-  public ConnectionType setNetworkConnection(ConnectionType type);
+  ConnectionType setNetworkConnection(ConnectionType type);
 
 }

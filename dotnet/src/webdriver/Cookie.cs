@@ -35,10 +35,11 @@ namespace OpenQA.Selenium
         private string cookieValue;
         private string cookiePath;
         private string cookieDomain;
+        private string sameSite;
         private DateTime? cookieExpiry;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="Cookie"/> class with a specific name, 
+        /// Initializes a new instance of the <see cref="Cookie"/> class with a specific name,
         /// value, domain, path and expiration date.
         /// </summary>
         /// <param name="name">The name of the cookie.</param>
@@ -82,7 +83,7 @@ namespace OpenQA.Selenium
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="Cookie"/> class with a specific name, 
+        /// Initializes a new instance of the <see cref="Cookie"/> class with a specific name,
         /// value, path and expiration date.
         /// </summary>
         /// <param name="name">The name of the cookie.</param>
@@ -98,7 +99,7 @@ namespace OpenQA.Selenium
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="Cookie"/> class with a specific name, 
+        /// Initializes a new instance of the <see cref="Cookie"/> class with a specific name,
         /// value, and path.
         /// </summary>
         /// <param name="name">The name of the cookie.</param>
@@ -180,6 +181,16 @@ namespace OpenQA.Selenium
         }
 
         /// <summary>
+        /// Gets the SameSite setting for the cookie.
+        /// </summary>
+        [JsonProperty("sameSite", NullValueHandling = NullValueHandling.Ignore)]
+        public virtual string SameSite
+        {
+            get { return this.sameSite; }
+            protected set { this.sameSite = value; }
+        }
+
+        /// <summary>
         /// Gets the expiration date of the cookie.
         /// </summary>
         public DateTime? Expiry
@@ -222,7 +233,11 @@ namespace OpenQA.Selenium
             }
 
             string name = rawCookie["name"].ToString();
-            string value = rawCookie["value"].ToString();
+            string value = string.Empty;
+            if (rawCookie["value"] != null)
+            {
+                value = rawCookie["value"].ToString();
+            }
 
             string path = "/";
             if (rawCookie.ContainsKey("path") && rawCookie["path"] != null)
@@ -239,18 +254,7 @@ namespace OpenQA.Selenium
             DateTime? expires = null;
             if (rawCookie.ContainsKey("expiry") && rawCookie["expiry"] != null)
             {
-                double seconds = 0;
-                if (double.TryParse(rawCookie["expiry"].ToString(), NumberStyles.Number, CultureInfo.InvariantCulture,  out seconds))
-                {
-                    try
-                    {
-                        expires = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(seconds).ToLocalTime();
-                    }
-                    catch (ArgumentOutOfRangeException)
-                    {
-                        expires = DateTime.MaxValue.ToLocalTime();
-                    }
-                }
+                expires = ConvertExpirationTime(rawCookie["expiry"].ToString());
             }
 
             bool secure = false;
@@ -265,11 +269,17 @@ namespace OpenQA.Selenium
                 isHttpOnly = bool.Parse(rawCookie["httpOnly"].ToString());
             }
 
-            return new ReturnedCookie(name, value, domain, path, expires, secure, isHttpOnly);
+            string sameSite = null;
+            if (rawCookie.ContainsKey("sameSite") && rawCookie["sameSite"] != null)
+            {
+                sameSite = rawCookie["sameSite"].ToString();
+            }
+
+            return new ReturnedCookie(name, value, domain, path, expires, secure, isHttpOnly, sameSite);
         }
 
         /// <summary>
-        /// Creates and returns a string representation of the cookie. 
+        /// Creates and returns a string representation of the cookie.
         /// </summary>
         /// <returns>A string representation of the cookie.</returns>
         public override string ToString()
@@ -281,13 +291,13 @@ namespace OpenQA.Selenium
         }
 
         /// <summary>
-        /// Determines whether the specified <see cref="System.Object">Object</see> is equal 
-        /// to the current <see cref="System.Object">Object</see>.
+        /// Determines whether the specified <see cref="object">Object</see> is equal
+        /// to the current <see cref="object">Object</see>.
         /// </summary>
-        /// <param name="obj">The <see cref="System.Object">Object</see> to compare with the 
-        /// current <see cref="System.Object">Object</see>.</param>
-        /// <returns><see langword="true"/> if the specified <see cref="System.Object">Object</see>
-        /// is equal to the current <see cref="System.Object">Object</see>; otherwise,
+        /// <param name="obj">The <see cref="object">Object</see> to compare with the
+        /// current <see cref="object">Object</see>.</param>
+        /// <returns><see langword="true"/> if the specified <see cref="object">Object</see>
+        /// is equal to the current <see cref="object">Object</see>; otherwise,
         /// <see langword="false"/>.</returns>
         public override bool Equals(object obj)
         {
@@ -315,7 +325,7 @@ namespace OpenQA.Selenium
         /// <summary>
         /// Serves as a hash function for a particular type.
         /// </summary>
-        /// <returns>A hash code for the current <see cref="System.Object">Object</see>.</returns>
+        /// <returns>A hash code for the current <see cref="object">Object</see>.</returns>
         public override int GetHashCode()
         {
             return this.cookieName.GetHashCode();
@@ -324,6 +334,25 @@ namespace OpenQA.Selenium
         private static string StripPort(string domain)
         {
             return string.IsNullOrEmpty(domain) ? null : domain.Split(':')[0];
+        }
+
+        private static DateTime? ConvertExpirationTime(string expirationTime)
+        {
+            DateTime? expires = null;
+            double seconds = 0;
+            if (double.TryParse(expirationTime, NumberStyles.Number, CultureInfo.InvariantCulture, out seconds))
+            {
+                try
+                {
+                    expires = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(seconds).ToLocalTime();
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    expires = DateTime.MaxValue.ToLocalTime();
+                }
+            }
+
+            return expires;
         }
     }
 }

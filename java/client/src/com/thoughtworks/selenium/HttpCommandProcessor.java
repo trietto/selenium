@@ -17,8 +17,7 @@
 
 package com.thoughtworks.selenium;
 
-import com.google.common.base.Charsets;
-import com.google.common.collect.Lists;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.openqa.selenium.net.Urls;
 
@@ -33,6 +32,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.NumberFormat;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -91,10 +91,12 @@ public class HttpCommandProcessor implements CommandProcessor {
     this.extensionJs = "";
   }
 
+  @Override
   public String getRemoteControlServerLocation() {
     return rcServerLocation;
   }
 
+  @Override
   public String doCommand(String commandName, String[] args) {
     DefaultRemoteCommand command = new DefaultRemoteCommand(commandName, args);
     String result = executeCommandOnServlet(command.getCommandURLString());
@@ -111,7 +113,10 @@ public class HttpCommandProcessor implements CommandProcessor {
     throw new SeleniumException(message);
   }
 
-  /** Sends the specified command string to the bridge servlet */
+  /** Sends the specified command string to the bridge servlet
+   * @param command command to execute
+   * @return response from the command execution
+   */
   public String executeCommandOnServlet(String command) {
     try {
       return getCommandResponseAsString(command);
@@ -145,12 +150,12 @@ public class HttpCommandProcessor implements CommandProcessor {
 
   // for testing
   protected Writer getOutputStreamWriter(HttpURLConnection conn) throws IOException {
-    return new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), Charsets.UTF_8));
+    return new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), UTF_8));
   }
 
   // for testing
   protected Reader getInputStreamReader(HttpURLConnection conn) throws IOException {
-    return new InputStreamReader(conn.getInputStream(), "UTF-8");
+    return new InputStreamReader(conn.getInputStream(), UTF_8);
   }
 
   // for testing
@@ -179,7 +184,7 @@ public class HttpCommandProcessor implements CommandProcessor {
         if (responsecode == HttpURLConnection.HTTP_MOVED_PERM) {
           pathToServlet = uc.getHeaderField("Location");
         } else if (responsecode != HttpURLConnection.HTTP_OK) {
-          throwAssertionFailureExceptionOrError(uc.getResponseMessage());
+          throwAssertionFailureExceptionOrError(uc.getResponseMessage() + " URL: " + result);
         } else {
           rdr = getInputStreamReader(uc);
           responseString = stringContentsOfInputStream(rdr);
@@ -228,16 +233,19 @@ public class HttpCommandProcessor implements CommandProcessor {
    *
    * @param extensionJs the extra extension Javascript to include in this browser session.
    */
+  @Override
   public void setExtensionJs(String extensionJs) {
     this.extensionJs = extensionJs;
   }
 
+  @Override
   public void start() {
     String result = getString("getNewBrowserSession",
         new String[] {browserStartCommand, browserURL, extensionJs});
     setSessionInProgress(result);
   }
 
+  @Override
   public void start(String optionsString) {
     String result = getString("getNewBrowserSession",
         new String[] {browserStartCommand, browserURL,
@@ -249,8 +257,9 @@ public class HttpCommandProcessor implements CommandProcessor {
    * Wraps the version of start() that takes a String parameter, sending it the result of calling
    * toString() on optionsObject, which will likely be a BrowserConfigurationOptions instance.
    *
-   * @param optionsObject
+   * @param optionsObject start options
    */
+  @Override
   public void start(Object optionsObject) {
     start(optionsObject.toString());
   }
@@ -259,9 +268,10 @@ public class HttpCommandProcessor implements CommandProcessor {
     sessionId = result;
   }
 
+  @Override
   public void stop() {
     if (hasSessionInProgress()) {
-      doCommand("testComplete", null);
+      doCommand("testComplete", new String[0]);
     }
     setSessionInProgress(null);
   }
@@ -270,6 +280,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return null != sessionId;
   }
 
+  @Override
   public String getString(String commandName, String[] args) {
     String result = doCommand(commandName, args);
     if (result.length() >= "OK,".length()) {
@@ -279,6 +290,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return "";
   }
 
+  @Override
   public String[] getStringArray(String commandName, String[] args) {
     String result = getString(commandName, args);
     return parseCSV(result);
@@ -294,7 +306,7 @@ public class HttpCommandProcessor implements CommandProcessor {
    * @return the string array resulting from parsing this string
    */
   public static String[] parseCSV(String input) {
-    List<String> output = Lists.newArrayList();
+    List<String> output = new ArrayList<>();
     StringBuffer sb = new StringBuffer();
     for (int i = 0; i < input.length(); i++) {
       char c = input.charAt(i);
@@ -315,6 +327,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return output.toArray(new String[output.size()]);
   }
 
+  @Override
   public Number getNumber(String commandName, String[] args) {
     String result = getString(commandName, args);
     Number n;
@@ -330,6 +343,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return n;
   }
 
+  @Override
   public Number[] getNumberArray(String commandName, String[] args) {
     String[] result = getStringArray(commandName, args);
     Number[] n = new Number[result.length];
@@ -343,6 +357,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return n;
   }
 
+  @Override
   public boolean getBoolean(String commandName, String[] args) {
     String result = getString(commandName, args);
     boolean b;
@@ -357,6 +372,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     throw new RuntimeException("result was neither 'true' nor 'false': " + result);
   }
 
+  @Override
   public boolean[] getBooleanArray(String commandName, String[] args) {
     String[] result = getStringArray(commandName, args);
     boolean[] b = new boolean[result.length];

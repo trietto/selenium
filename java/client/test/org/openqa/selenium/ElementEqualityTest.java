@@ -17,18 +17,16 @@
 
 package org.openqa.selenium;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.openqa.selenium.testing.drivers.Browser.SAFARI;
+
 import org.junit.Test;
-import org.openqa.selenium.internal.WrapsElement;
 import org.openqa.selenium.remote.RemoteWebElement;
-import org.openqa.selenium.testing.Ignore;
 import org.openqa.selenium.testing.JUnit4TestBase;
-import org.openqa.selenium.testing.JavascriptEnabled;
+import org.openqa.selenium.testing.NotYetImplemented;
+import org.openqa.selenium.testing.SwitchToTopAfterTest;
 
 import java.util.List;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.openqa.selenium.testing.Ignore.Driver.MARIONETTE;
 
 public class ElementEqualityTest extends JUnit4TestBase {
 
@@ -39,17 +37,16 @@ public class ElementEqualityTest extends JUnit4TestBase {
     WebElement body = driver.findElement(By.tagName("body"));
     WebElement xbody = driver.findElements(By.xpath("//body")).get(0);
 
-    assertEquals(body, xbody);
+    assertThat(xbody).isEqualTo(body);
   }
 
   @Test
-  @Ignore(value = MARIONETTE, reason = "Marionette does not recognize the packet type elementEquals")
   public void testDifferentElementsShouldNotBeEqual() {
     driver.get(pages.simpleTestPage);
 
     List<WebElement> ps = driver.findElements(By.tagName("p"));
 
-    assertFalse(ps.get(0).equals(ps.get(1)));
+    assertThat(ps.get(0).equals(ps.get(1))).isFalse();
   }
 
   @Test
@@ -58,7 +55,7 @@ public class ElementEqualityTest extends JUnit4TestBase {
     WebElement body = driver.findElement(By.tagName("body"));
     WebElement xbody = driver.findElement(By.xpath("//body"));
 
-    assertEquals(body.hashCode(), xbody.hashCode());
+    assertThat(xbody.hashCode()).isEqualTo(body.hashCode());
   }
 
   @Test
@@ -67,12 +64,12 @@ public class ElementEqualityTest extends JUnit4TestBase {
     List<WebElement> body = driver.findElements(By.tagName("body"));
     List<WebElement> xbody = driver.findElements(By.xpath("//body"));
 
-    assertEquals(body.get(0).hashCode(), xbody.get(0).hashCode());
+    assertThat(xbody.get(0).hashCode()).isEqualTo(body.get(0).hashCode());
   }
 
-  @JavascriptEnabled
-  @NoDriverAfterTest // So that next test never starts with "inside a frame" base state.
+  @SwitchToTopAfterTest
   @Test
+  @NotYetImplemented(SAFARI)
   public void testAnElementFoundInADifferentFrameViaJsShouldHaveSameId() {
     driver.get(pages.missedJsReferencePage);
 
@@ -95,7 +92,7 @@ public class ElementEqualityTest extends JUnit4TestBase {
     String firstId = getId(unwrapIfNecessary(first));
     String secondId = getId(unwrapIfNecessary(second));
 
-    assertEquals(firstId, secondId);
+    assertThat(secondId).isEqualTo(firstId);
   }
 
   private String getId(WebElement element) {

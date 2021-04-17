@@ -17,8 +17,6 @@
 
 package com.thoughtworks.selenium.webdriven.commands;
 
-import com.google.common.base.Throwables;
-
 import com.thoughtworks.selenium.Wait;
 import com.thoughtworks.selenium.webdriven.SeleneseCommand;
 
@@ -31,8 +29,13 @@ import org.openqa.selenium.WebDriverException;
 import java.util.logging.Logger;
 
 public class WaitForPageToLoad extends SeleneseCommand<Void> {
-  Logger log = Logger.getLogger(WaitForPageToLoad.class.getName());
+  private Logger log = Logger.getLogger(WaitForPageToLoad.class.getName());
+  private final Runnable sleepUntil;
   private int timeToWait = 250;
+
+  public WaitForPageToLoad(Runnable sleepUntil) {
+    this.sleepUntil = sleepUntil;
+  }
 
   /**
    * Overrides the default time to wait (in milliseconds) after a page has finished loading.
@@ -50,6 +53,8 @@ public class WaitForPageToLoad extends SeleneseCommand<Void> {
       // Assume that we Do The Right Thing
       return null;
     }
+
+    sleepUntil.run();
 
     long timeoutInMillis = Long.parseLong(timeout);
 
@@ -88,7 +93,7 @@ public class WaitForPageToLoad extends SeleneseCommand<Void> {
     try {
       Thread.sleep(duration);
     } catch (InterruptedException e) {
-      throw Throwables.propagate(e);
+      throw new RuntimeException(e);
     }
   }
 
@@ -100,7 +105,7 @@ public class WaitForPageToLoad extends SeleneseCommand<Void> {
           Object result = ((JavascriptExecutor) driver).executeScript(
               "return 'complete' == document.readyState;");
 
-          if (result != null && result instanceof Boolean && (Boolean) result) {
+          if (result instanceof Boolean && (Boolean) result) {
             return true;
           }
         } catch (Exception e) {
@@ -134,8 +139,7 @@ public class WaitForPageToLoad extends SeleneseCommand<Void> {
           }
 
           return System.currentTimeMillis() - seenAt > 1000;
-        } catch (NoSuchElementException ignored) {
-        } catch (NullPointerException ignored) {
+        } catch (NoSuchElementException | NullPointerException ignored) {
         }
 
         return false;

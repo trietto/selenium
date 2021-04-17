@@ -20,6 +20,9 @@ package org.openqa.selenium;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 
 public class Cookie implements Serializable {
   private static final long serialVersionUID = 4115876353625612383L;
@@ -31,6 +34,7 @@ public class Cookie implements Serializable {
   private final Date expiry;
   private final boolean isSecure;
   private final boolean isHttpOnly;
+  private final String sameSite;
 
   /**
    * Creates an insecure non-httpOnly cookie with no domain specified.
@@ -91,6 +95,24 @@ public class Cookie implements Serializable {
    */
   public Cookie(String name, String value, String domain, String path, Date expiry,
       boolean isSecure, boolean isHttpOnly) {
+            this(name, value, domain, path, expiry, isSecure, isHttpOnly, null);
+  }
+
+  /**
+   * Creates a cookie.
+   *
+   * @param name The name of the cookie; may not be null or an empty string.
+   * @param value The cookie value; may not be null.
+   * @param domain The domain the cookie is visible to.
+   * @param path The path the cookie is visible to. If left blank or set to null, will be set to
+   *     "/".
+   * @param expiry The cookie's expiration date; may be null.
+   * @param isSecure Whether this cookie requires a secure connection.
+   * @param isHttpOnly Whether this cookie is a httpOnly cookie.
+   * @param sameSite The samesite attribute of this cookie; e.g. None, Lax, Strict.
+   */
+  public Cookie(String name, String value, String domain, String path, Date expiry,
+      boolean isSecure, boolean isHttpOnly, String sameSite) {
     this.name = name;
     this.value = value;
     this.path = path == null || "".equals(path) ? "/" : path;
@@ -105,6 +127,8 @@ public class Cookie implements Serializable {
     } else {
       this.expiry = null;
     }
+
+    this.sameSite = sameSite;
   }
 
   /**
@@ -153,7 +177,11 @@ public class Cookie implements Serializable {
   }
 
   public Date getExpiry() {
-    return expiry;
+    return expiry == null ? null : new Date(expiry.getTime());
+  }
+
+  public String getSameSite() {
+    return sameSite;
   }
 
   private static String stripPort(String domain) {
@@ -176,6 +204,43 @@ public class Cookie implements Serializable {
     }
   }
 
+  /**
+   * JSON object keys are defined in
+   * https://w3c.github.io/webdriver/#dfn-table-for-cookie-conversion.
+   */
+  public Map<String, Object> toJson() {
+    Map<String, Object> toReturn = new TreeMap<>();
+
+    if (getDomain() != null) {
+      toReturn.put("domain", getDomain());
+    }
+
+    if (getExpiry() != null) {
+      toReturn.put("expiry", getExpiry());
+    }
+
+    if (getName() != null) {
+      toReturn.put("name", getName());
+    }
+
+    if (getPath() != null) {
+      toReturn.put("path", getPath());
+    }
+
+    if (getValue() != null) {
+      toReturn.put("value", getValue());
+    }
+
+    toReturn.put("secure", isSecure());
+    toReturn.put("httpOnly", isHttpOnly());
+
+    if (getSameSite() != null) {
+      toReturn.put("sameSite", getSameSite());
+    }
+
+    return toReturn;
+  }
+
   @Override
   public String toString() {
     return name + "=" + value
@@ -184,7 +249,8 @@ public class Cookie implements Serializable {
                 .format(expiry))
         + ("".equals(path) ? "" : "; path=" + path)
         + (domain == null ? "" : "; domain=" + domain)
-        + (isSecure ? ";secure;" : "");
+        + (isSecure ? ";secure;" : "")
+        + (sameSite == null ? "" : "; sameSite=" + sameSite);
   }
 
   /**
@@ -204,7 +270,7 @@ public class Cookie implements Serializable {
     if (!name.equals(cookie.name)) {
       return false;
     }
-    return !(value != null ? !value.equals(cookie.value) : cookie.value != null);
+    return Objects.equals(value, cookie.value);
   }
 
   @Override
@@ -221,6 +287,7 @@ public class Cookie implements Serializable {
     private Date expiry;
     private boolean secure;
     private boolean httpOnly;
+    private String sameSite;
 
     public Builder(String name, String value) {
       this.name = name;
@@ -238,7 +305,7 @@ public class Cookie implements Serializable {
     }
 
     public Builder expiresOn(Date expiry) {
-      this.expiry = expiry;
+      this.expiry = expiry == null ? null : new Date(expiry.getTime());
       return this;
     }
 
@@ -252,8 +319,14 @@ public class Cookie implements Serializable {
       return this;
     }
 
+    public Builder sameSite(String sameSite) {
+      this.sameSite = sameSite;
+      return this;
+    }
+
     public Cookie build() {
-      return new Cookie(name, value, domain, path, expiry, secure, httpOnly);
+      return new Cookie(
+          name, value, domain, path, expiry, secure, httpOnly, sameSite);
     }
   }
 }

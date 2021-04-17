@@ -24,39 +24,30 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Point;
+import org.openqa.selenium.Rectangle;
 import org.openqa.selenium.SearchContext;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.interactions.internal.Coordinates;
-import org.openqa.selenium.internal.FindsByClassName;
-import org.openqa.selenium.internal.FindsByCssSelector;
-import org.openqa.selenium.internal.FindsById;
-import org.openqa.selenium.internal.FindsByLinkText;
-import org.openqa.selenium.internal.FindsByName;
-import org.openqa.selenium.internal.FindsByTagName;
-import org.openqa.selenium.internal.FindsByXPath;
-import org.openqa.selenium.internal.HasIdentity;
-import org.openqa.selenium.internal.Locatable;
-import org.openqa.selenium.internal.WrapsDriver;
-import org.openqa.selenium.internal.WrapsElement;
+import org.openqa.selenium.WrapsDriver;
+import org.openqa.selenium.WrapsElement;
+import org.openqa.selenium.interactions.Coordinates;
+import org.openqa.selenium.interactions.Locatable;
 import org.openqa.selenium.io.Zip;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById, FindsByName,
-                                         FindsByTagName, FindsByClassName, FindsByCssSelector,
-                                         FindsByXPath, WrapsDriver, Locatable, HasIdentity,
-                                         TakesScreenshot {
+public class RemoteWebElement implements WebElement, WrapsDriver, TakesScreenshot, Locatable {
 
   private String foundBy;
   protected String id;
   protected RemoteWebDriver parent;
-  protected RemoteMouse mouse;
   protected FileDetector fileDetector;
 
   protected void setFoundBy(SearchContext foundFrom, String locator, String term) {
@@ -65,7 +56,6 @@ public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById,
 
   public void setParent(RemoteWebDriver parent) {
     this.parent = parent;
-    mouse = (RemoteMouse) parent.getMouse();
   }
 
   public String getId() {
@@ -80,24 +70,39 @@ public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById,
     fileDetector = detector;
   }
 
+  @Override
   public void click() {
-    execute(DriverCommand.CLICK_ELEMENT, ImmutableMap.of("id", id));
+    execute(DriverCommand.CLICK_ELEMENT(id));
   }
 
+  @Override
   public void submit() {
-    execute(DriverCommand.SUBMIT_ELEMENT, ImmutableMap.of("id", id));
+    execute(DriverCommand.SUBMIT_ELEMENT(id));
   }
 
+  @Override
   public void sendKeys(CharSequence... keysToSend) {
-    File localFile = fileDetector.getLocalFile(keysToSend);
-    if (localFile == null) {
-      execute(DriverCommand.SEND_KEYS_TO_ELEMENT, ImmutableMap.of("id", id, "value", keysToSend));
-      return;
+    if (keysToSend == null || keysToSend.length == 0) {
+      throw new IllegalArgumentException("Keys to send should be a not null CharSequence");
+    }
+    for (CharSequence cs : keysToSend) {
+      if (cs == null) {
+        throw new IllegalArgumentException("Keys to send should be a not null CharSequence");
+      }
     }
 
-    String remotePath = upload(localFile);
-    CharSequence[] keys = new CharSequence[]{remotePath};
-    execute(DriverCommand.SEND_KEYS_TO_ELEMENT, ImmutableMap.of("id", id, "value", keys));
+    String allKeysToSend = String.join("", keysToSend);
+
+    List<File> files = Arrays.stream(allKeysToSend.split("\n"))
+      .map(fileDetector::getLocalFile)
+      .collect(Collectors.toList());
+    if (!files.isEmpty() && !files.contains(null)) {
+      allKeysToSend = files.stream()
+        .map(this::upload)
+        .collect(Collectors.joining("\n"));
+    }
+
+    execute(DriverCommand.SEND_KEYS_TO_ELEMENT(id, new CharSequence[]{allKeysToSend}));
   }
 
   private String upload(File localFile) {
@@ -106,36 +111,71 @@ public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById,
     }
 
     try {
-      String zip = new Zip().zipFile(localFile.getParentFile(), localFile);
-      Response response = execute(DriverCommand.UPLOAD_FILE, ImmutableMap.of("file", zip));
+      String zip = Zip.zip(localFile);
+      Response response = execute(DriverCommand.UPLOAD_FILE(zip));
       return (String) response.getValue();
     } catch (IOException e) {
       throw new WebDriverException("Cannot upload " + localFile, e);
     }
   }
 
+  @Override
   public void clear() {
-    execute(DriverCommand.CLEAR_ELEMENT, ImmutableMap.of("id", id));
+    execute(DriverCommand.CLEAR_ELEMENT(id));
   }
 
+  @Override
   public String getTagName() {
-    return (String) execute(DriverCommand.GET_ELEMENT_TAG_NAME, ImmutableMap.of("id", id))
-        .getValue();
+    return (String) execute(DriverCommand.GET_ELEMENT_TAG_NAME(id))
+      .getValue();
   }
 
+  @Override
+  public String getDomProperty(String name) {
+    return stringValueOf(
+      execute(DriverCommand.GET_ELEMENT_DOM_PROPERTY(id, name))
+        .getValue());
+  }
+
+  @Override
+  public String getDomAttribute(String name) {
+    return stringValueOf(
+      execute(DriverCommand.GET_ELEMENT_DOM_ATTRIBUTE(id, name))
+        .getValue());
+  }
+
+  @Override
   public String getAttribute(String name) {
-    Object value =
-        execute(DriverCommand.GET_ELEMENT_ATTRIBUTE, ImmutableMap.of("id", id, "name", name))
-            .getValue();
-    if (value == null) {
+    return stringValueOf(
+      execute(DriverCommand.GET_ELEMENT_ATTRIBUTE(id, name))
+        .getValue());
+  }
+
+  @Override
+  public String getAriaRole() {
+    return stringValueOf(
+      execute(DriverCommand.GET_ELEMENT_ARIA_ROLE(id))
+        .getValue());
+  }
+
+  @Override
+  public String getAccessibleName() {
+    return stringValueOf(
+      execute(DriverCommand.GET_ELEMENT_ACCESSIBLE_NAME(id))
+        .getValue());
+  }
+
+  private static String stringValueOf(Object o) {
+    if (o == null) {
       return null;
     }
-    return String.valueOf(value);
+    return String.valueOf(o);
   }
 
+  @Override
   public boolean isSelected() {
-    Object value = execute(DriverCommand.IS_ELEMENT_SELECTED, ImmutableMap.of("id", id))
-        .getValue();
+    Object value = execute(DriverCommand.IS_ELEMENT_SELECTED(id))
+      .getValue();
     try {
       return (Boolean) value;
     } catch (ClassCastException ex) {
@@ -143,9 +183,10 @@ public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById,
     }
   }
 
+  @Override
   public boolean isEnabled() {
-    Object value = execute(DriverCommand.IS_ELEMENT_ENABLED, ImmutableMap.of("id", id))
-        .getValue();
+    Object value = execute(DriverCommand.IS_ELEMENT_ENABLED(id))
+      .getValue();
     try {
       return (Boolean) value;
     } catch (ClassCastException ex) {
@@ -153,124 +194,60 @@ public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById,
     }
   }
 
+  @Override
   public String getText() {
-    Response response = execute(DriverCommand.GET_ELEMENT_TEXT, ImmutableMap.of("id", id));
+    Response response = execute(DriverCommand.GET_ELEMENT_TEXT(id));
     return (String) response.getValue();
   }
 
+  @Override
   public String getCssValue(String propertyName) {
-    Response response = execute(DriverCommand.GET_ELEMENT_VALUE_OF_CSS_PROPERTY,
-                                ImmutableMap.of("id", id, "propertyName", propertyName));
+    Response response = execute(DriverCommand.GET_ELEMENT_VALUE_OF_CSS_PROPERTY(id, propertyName));
     return (String) response.getValue();
   }
 
-  public List<WebElement> findElements(By by) {
-    return by.findElements(this);
+  @Override
+  public List<WebElement> findElements(By locator) {
+    return parent.findElements(parent, this, locator);
   }
 
-  public WebElement findElement(By by) {
-    return by.findElement(this);
+  @Override
+  public WebElement findElement(By locator) {
+    return parent.findElement(parent, this, locator);
   }
 
+  /**
+   * @deprecated Rely on using {@link By.Remotable} instead
+   */
+  @Deprecated
   protected WebElement findElement(String using, String value) {
-    Response response = execute(DriverCommand.FIND_CHILD_ELEMENT,
-                                ImmutableMap.of("id", id, "using", using, "value", value));
-
-    Object responseValue = response.getValue();
-    WebElement element;
-    try {
-      element = (WebElement) responseValue;
-    } catch (ClassCastException ex) {
-      throw new WebDriverException("Returned value cannot be converted to WebElement: " + value, ex);
-    }
-    parent.setFoundBy(this, element, using, value);
-    return element;
+    throw new UnsupportedOperationException("`findElement` has been replaced by usages of " + By.Remotable.class);
   }
 
-  @SuppressWarnings("unchecked")
+  /**
+   * @deprecated Rely on using {@link By.Remotable} instead
+   */
+  @Deprecated
   protected List<WebElement> findElements(String using, String value) {
-    Response response = execute(DriverCommand.FIND_CHILD_ELEMENTS,
-                                ImmutableMap.of("id", id, "using", using, "value", value));
-    Object responseValue = response.getValue();
-    List<WebElement> allElements;
+    throw new UnsupportedOperationException("`findElement` has been replaced by usages of " + By.Remotable.class);
+  }
+
+  protected Response execute(CommandPayload payload) {
     try {
-      allElements = (List<WebElement>) responseValue;
-    } catch (ClassCastException ex) {
-      throw new WebDriverException("Returned value cannot be converted to List<WebElement>: " + responseValue, ex);
+      return parent.execute(payload);
+    } catch (WebDriverException ex) {
+      ex.addInfo("Element", this.toString());
+      throw ex;
     }
-    for (WebElement element : allElements) {
-      parent.setFoundBy(this, element, using, value);
-    }
-
-    return allElements;
-  }
-
-  public WebElement findElementById(String using) {
-    return findElement("id", using);
-  }
-
-  public List<WebElement> findElementsById(String using) {
-    return findElements("id", using);
-  }
-
-  public WebElement findElementByLinkText(String using) {
-    return findElement("link text", using);
-  }
-
-  public List<WebElement> findElementsByLinkText(String using) {
-    return findElements("link text", using);
-  }
-
-  public WebElement findElementByName(String using) {
-    return findElement("name", using);
-  }
-
-  public List<WebElement> findElementsByName(String using) {
-    return findElements("name", using);
-  }
-
-  public WebElement findElementByClassName(String using) {
-    return findElement("class name", using);
-  }
-
-  public List<WebElement> findElementsByClassName(String using) {
-    return findElements("class name", using);
-  }
-
-  public WebElement findElementByCssSelector(String using) {
-    return findElement("css selector", using);
-  }
-
-  public List<WebElement> findElementsByCssSelector(String using) {
-    return findElements("css selector", using);
-  }
-
-  public WebElement findElementByXPath(String using) {
-    return findElement("xpath", using);
-  }
-
-  public List<WebElement> findElementsByXPath(String using) {
-    return findElements("xpath", using);
-  }
-
-  public WebElement findElementByPartialLinkText(String using) {
-    return findElement("partial link text", using);
-  }
-
-  public List<WebElement> findElementsByPartialLinkText(String using) {
-    return findElements("partial link text", using);
-  }
-
-  public WebElement findElementByTagName(String using) {
-    return findElement("tag name", using);
-  }
-
-  public List<WebElement> findElementsByTagName(String using) {
-    return findElements("tag name", using);
   }
 
   protected Response execute(String command, Map<String, ?> parameters) {
-    return parent.execute(command, parameters);
+    try {
+      return parent.execute(command, parameters);
+    } catch (WebDriverException ex) {
+      ex.addInfo("Element", this.toString());
+      throw ex;
+    }
   }
 
   @Override
@@ -306,80 +283,103 @@ public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById,
    *
    * @see org.openqa.selenium.internal.WrapsDriver#getWrappedDriver()
    */
+  @Override
   public WebDriver getWrappedDriver() {
     return parent;
   }
 
+  @Override
   public boolean isDisplayed() {
-    Object value = execute(DriverCommand.IS_ELEMENT_DISPLAYED, ImmutableMap.of("id", id))
-        .getValue();
+    Object value = execute(DriverCommand.IS_ELEMENT_DISPLAYED(id))
+      .getValue();
     try {
+      // See https://github.com/SeleniumHQ/selenium/issues/9266
+      if (value == null) {
+        return false;
+      }
       return (Boolean) value;
     } catch (ClassCastException ex) {
       throw new WebDriverException("Returned value cannot be converted to Boolean: " + value, ex);
     }
   }
 
+  @Override
   @SuppressWarnings({"unchecked"})
   public Point getLocation() {
-    Response response =
-        execute(DriverCommand.GET_ELEMENT_LOCATION, ImmutableMap.of("id", id));
+    Response response = execute(DriverCommand.GET_ELEMENT_LOCATION(id));
     Map<String, Object> rawPoint = (Map<String, Object>) response.getValue();
     int x = ((Number) rawPoint.get("x")).intValue();
     int y = ((Number) rawPoint.get("y")).intValue();
     return new Point(x, y);
   }
 
+  @Override
   @SuppressWarnings({"unchecked"})
   public Dimension getSize() {
-    Response response = execute(DriverCommand.GET_ELEMENT_SIZE, ImmutableMap.of("id", id));
+    Response response = execute(DriverCommand.GET_ELEMENT_SIZE(id));
     Map<String, Object> rawSize = (Map<String, Object>) response.getValue();
     int width = ((Number) rawSize.get("width")).intValue();
     int height = ((Number) rawSize.get("height")).intValue();
     return new Dimension(width, height);
   }
 
+  @Override
+  @SuppressWarnings({"unchecked"})
+  public Rectangle getRect() {
+    Response response = execute(DriverCommand.GET_ELEMENT_RECT(id));
+    Map<String, Object> rawRect = (Map<String, Object>) response.getValue();
+    int x = ((Number) rawRect.get("x")).intValue();
+    int y = ((Number) rawRect.get("y")).intValue();
+    int width = ((Number) rawRect.get("width")).intValue();
+    int height = ((Number) rawRect.get("height")).intValue();
+    return new Rectangle(x, y, height, width);
+  }
+
+  @Override
   public Coordinates getCoordinates() {
     return new Coordinates() {
 
+      @Override
       public Point onScreen() {
         throw new UnsupportedOperationException("Not supported yet.");
       }
 
+      @Override
       public Point inViewPort() {
-        Response response = execute(DriverCommand.GET_ELEMENT_LOCATION_ONCE_SCROLLED_INTO_VIEW,
-            ImmutableMap.of("id", getId()));
+        Response response = execute(DriverCommand.GET_ELEMENT_LOCATION_ONCE_SCROLLED_INTO_VIEW(getId()));
 
         @SuppressWarnings("unchecked")
         Map<String, Number> mapped = (Map<String, Number>) response.getValue();
-
         return new Point(mapped.get("x").intValue(), mapped.get("y").intValue());
       }
 
+      @Override
       public Point onPage() {
         return getLocation();
       }
 
+      @Override
       public Object getAuxiliary() {
         return getId();
       }
     };
   }
 
+  @Override
   @Beta
   public <X> X getScreenshotAs(OutputType<X> outputType) throws WebDriverException {
-    Response response = execute(DriverCommand.ELEMENT_SCREENSHOT, ImmutableMap.of("id", id));
+    Response response = execute(DriverCommand.ELEMENT_SCREENSHOT(id));
     Object result = response.getValue();
     if (result instanceof String) {
       String base64EncodedPng = (String) result;
       return outputType.convertFromBase64Png(base64EncodedPng);
     } else if (result instanceof byte[]) {
-      String base64EncodedPng = new String((byte[]) result);
-      return outputType.convertFromBase64Png(base64EncodedPng);
+      return outputType.convertFromPngBytes((byte[]) result);
     } else {
-      throw new RuntimeException(String.format("Unexpected result for %s command: %s",
-                                               DriverCommand.ELEMENT_SCREENSHOT,
-                                               result == null ? "null" : result.getClass().getName() + " instance"));
+      throw new RuntimeException(String.format(
+        "Unexpected result for %s command: %s",
+        DriverCommand.ELEMENT_SCREENSHOT,
+        result == null ? "null" : result.getClass().getName() + " instance"));
     }
   }
 
@@ -388,5 +388,11 @@ public class RemoteWebElement implements WebElement, FindsByLinkText, FindsById,
       return String.format("[%s -> unknown locator]", super.toString());
     }
     return String.format("[%s]", foundBy);
+  }
+
+  public Map<String, Object> toJson() {
+    return ImmutableMap.of(
+      Dialect.OSS.getEncodedElementKey(), getId(),
+      Dialect.W3C.getEncodedElementKey(), getId());
   }
 }

@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -19,7 +19,6 @@
 
 module Selenium
   module WebDriver
-
     #
     # The main class through which you control the browser.
     #
@@ -31,9 +30,9 @@ module Selenium
 
     class Driver
       include SearchContext
+      include TakesScreenshot
 
       class << self
-
         #
         # @api private
         #
@@ -43,34 +42,22 @@ module Selenium
         #
 
         def for(browser, opts = {})
-          listener = opts.delete(:listener)
-
-          bridge = case browser
-                   when :firefox, :ff
-                     Firefox::Bridge.new(opts)
-                   when :remote
-                     Remote::Bridge.new(opts)
-                   when :ie, :internet_explorer
-                     IE::Bridge.new(opts)
-                   when :chrome
-                     Chrome::Bridge.new(opts)
-                   when :edge
-                     Edge::Bridge.new(opts)
-                   when :android
-                     Android::Bridge.new(opts)
-                   when :iphone
-                     IPhone::Bridge.new(opts)
-                   when :phantomjs
-                     PhantomJS::Bridge.new(opts)
-                   when :safari
-                     Safari::Bridge.new(opts)
-                   else
-                     raise ArgumentError, "unknown driver: #{browser.inspect}"
-                   end
-
-          bridge = Support::EventFiringBridge.new(bridge, listener) if listener
-
-          new(bridge)
+          case browser
+          when :chrome
+            Chrome::Driver.new(**opts)
+          when :internet_explorer, :ie
+            IE::Driver.new(**opts)
+          when :safari
+            Safari::Driver.new(**opts)
+          when :firefox, :ff
+            Firefox::Driver.new(**opts)
+          when :edge
+            Edge::Driver.new(**opts)
+          when :remote
+            Remote::Driver.new(**opts)
+          else
+            raise ArgumentError, "unknown driver: #{browser.inspect}"
+          end
         end
       end
 
@@ -81,17 +68,26 @@ module Selenium
       # @api private
       #
 
-      def initialize(bridge)
-        @bridge = bridge
-
-        # TODO: refactor this away
-        unless bridge.driver_extensions.empty?
-          extend(*bridge.driver_extensions)
-        end
+      def initialize(bridge: nil, listener: nil, **opts)
+        @service = nil
+        bridge ||= create_bridge(**opts)
+        add_extensions(bridge.browser)
+        @bridge = listener ? Support::EventFiringBridge.new(bridge, listener) : bridge
       end
 
       def inspect
-        '#<%s:0x%x browser=%s>' % [self.class, hash*2, bridge.browser.inspect]
+        format '#<%<class>s:0x%<hash>x browser=%<browser>s>', class: self.class, hash: hash * 2,
+                                                              browser: bridge.browser.inspect
+      end
+
+      #
+      # information about whether a remote end is in a state in which it can create new sessions,
+      # and may include additional meta information.
+      #
+      # @return [Hash]
+      #
+      def status
+        @bridge.status
       end
 
       #
@@ -113,12 +109,29 @@ module Selenium
       end
 
       #
-      # @return [Options]
-      # @see Options
+      # @return [Manager]
+      # @see Manager
       #
 
       def manage
-        @manage ||= WebDriver::Options.new(bridge)
+        bridge.manage
+      end
+
+      #
+      # @return [ActionBuilder]
+      # @see ActionBuilder
+      #
+
+      def action
+        bridge.action
+      end
+
+      def mouse
+        bridge.mouse
+      end
+
+      def keyboard
+        bridge.keyboard
       end
 
       #
@@ -136,7 +149,7 @@ module Selenium
       #
 
       def current_url
-        bridge.getCurrentUrl
+        bridge.url
       end
 
       #
@@ -146,7 +159,7 @@ module Selenium
       #
 
       def title
-        bridge.getTitle
+        bridge.title
       end
 
       #
@@ -156,7 +169,7 @@ module Selenium
       #
 
       def page_source
-        bridge.getPageSource
+        bridge.page_source
       end
 
       #
@@ -165,6 +178,8 @@ module Selenium
 
       def quit
         bridge.quit
+      ensure
+        @service&.stop
       end
 
       #
@@ -183,7 +198,7 @@ module Selenium
       #
 
       def window_handles
-        bridge.getWindowHandles
+        bridge.window_handles
       end
 
       #
@@ -193,7 +208,7 @@ module Selenium
       #
 
       def window_handle
-        bridge.getCurrentWindowHandle
+        bridge.window_handle
       end
 
       #
@@ -201,7 +216,7 @@ module Selenium
       #
       # @param [String] script
       #   JavaScript source to execute
-      # @param [WebDriver::Element,Integer, Float, Boolean, NilClass, String, Array] *args
+      # @param [WebDriver::Element, Integer, Float, Boolean, NilClass, String, Array] args
       #   Arguments will be available in the given script in the 'arguments' pseudo-array.
       #
       # @return [WebDriver::Element,Integer,Float,Boolean,NilClass,String,Array]
@@ -209,7 +224,7 @@ module Selenium
       #
 
       def execute_script(script, *args)
-        bridge.executeScript(script, *args)
+        bridge.execute_script(script, *args)
       end
 
       # Execute an asynchronous piece of JavaScript in the context of the
@@ -221,27 +236,26 @@ module Selenium
       #
       # @param [String] script
       #   JavaScript source to execute
-      # @param [WebDriver::Element,Integer, Float, Boolean, NilClass, String, Array] *args
+      # @param [WebDriver::Element,Integer, Float, Boolean, NilClass, String, Array] args
       #   Arguments to the script. May be empty.
       #
       # @return [WebDriver::Element,Integer,Float,Boolean,NilClass,String,Array]
       #
 
       def execute_async_script(script, *args)
-        bridge.executeAsyncScript(script, *args)
+        bridge.execute_async_script(script, *args)
       end
-
 
       #-------------------------------- sugar  --------------------------------
 
       #
-      #   driver.first(:id, 'foo')
+      #   driver.first(id: 'foo')
       #
 
       alias_method :first, :find_element
 
       #
-      #   driver.all(:class, 'bar') #=> [#<WebDriver::Element:0x1011c3b88, ...]
+      #   driver.all(class: 'bar') #=> [#<WebDriver::Element:0x1011c3b88, ...]
       #
 
       alias_method :all, :find_elements
@@ -255,7 +269,7 @@ module Selenium
       # Get the first element matching the given selector. If given a
       # String or Symbol, it will be used as the id of the element.
       #
-      # @param  [String,Hash] id or selector
+      # @param  [String,Hash] sel id or selector
       # @return [WebDriver::Element]
       #
       # Examples:
@@ -265,15 +279,13 @@ module Selenium
       #
 
       def [](sel)
-        if sel.kind_of?(String) || sel.kind_of?(Symbol)
-          sel = { :id => sel }
-        end
+        sel = {id: sel} if sel.is_a?(String) || sel.is_a?(Symbol)
 
         find_element sel
       end
 
       def browser
-        bridge.browser
+        bridge&.browser
       end
 
       def capabilities
@@ -285,16 +297,97 @@ module Selenium
       # @see SearchContext
       #
 
-      def ref
-        nil
-      end
+      def ref; end
 
       private
 
-      def bridge
-        @bridge
+      attr_reader :bridge
+
+      def create_bridge(**opts)
+        opts[:url] ||= service_url(opts)
+        caps = opts.delete(:capabilities)
+        # NOTE: This is deprecated
+        cap_array = caps.is_a?(Hash) ? [caps] : Array(caps)
+
+        desired_capabilities = opts.delete(:desired_capabilities)
+        if desired_capabilities
+          WebDriver.logger.deprecate(':desired_capabilities as a parameter for driver initialization',
+                                     ':capabilities with an Array value of capabilities/options if necessary',
+                                     id: :desired_capabilities)
+          desired_capabilities = Remote::Capabilities.new(desired_capabilities) if desired_capabilities.is_a?(Hash)
+          cap_array << desired_capabilities
+        end
+
+        options = opts.delete(:options)
+        if options
+          WebDriver.logger.deprecate(':options as a parameter for driver initialization',
+                                     ':capabilities with an Array of value capabilities/options if necessary',
+                                     id: :browser_options)
+          cap_array << options
+        end
+
+        capabilities = generate_capabilities(cap_array)
+
+        bridge_opts = {http_client: opts.delete(:http_client), url: opts.delete(:url)}
+        raise ArgumentError, "Unable to create a driver with parameters: #{opts}" unless opts.empty?
+
+        bridge = Remote::Bridge.new(**bridge_opts)
+
+        bridge.create_session(capabilities)
+        bridge
       end
 
+      def generate_capabilities(cap_array)
+        cap_array.map { |cap|
+          if cap.is_a? Symbol
+            cap = Remote::Capabilities.send(cap)
+          elsif cap.is_a? Hash
+            new_message = 'Capabilities instance initialized with the Hash, or build values with Options class'
+            WebDriver.logger.deprecate("passing a Hash value to :capabilities",
+                                       new_message,
+                                       id: :capabilities_hash)
+            cap = Remote::Capabilities.new(cap)
+          elsif !cap.respond_to? :as_json
+            msg = ":capabilities parameter only accepts objects responding to #as_json which #{cap.class} does not"
+            raise ArgumentError, msg
+          end
+          cap&.as_json
+        }.inject(:merge) || Remote::Capabilities.send(browser || :new)
+      end
+
+      def service_url(opts)
+        service_config = opts.delete(:service)
+        %i[driver_opts driver_path port].each do |key|
+          next unless opts.key? key
+
+          WebDriver.logger.deprecate(":#{key}", ':service with an instance of Selenium::WebDriver::Service',
+                                     id: "service_#{key}".to_sym)
+        end
+        service_config ||= Service.send(browser,
+                                        args: opts.delete(:driver_opts),
+                                        path: opts.delete(:driver_path),
+                                        port: opts.delete(:port))
+        @service = service_config.launch
+        @service.uri
+      end
+
+      def screenshot
+        bridge.screenshot
+      end
+
+      def add_extensions(browser)
+        extensions = case browser
+                     when :chrome, :msedge
+                       Chrome::Driver::EXTENSIONS
+                     when :firefox
+                       Firefox::Driver::EXTENSIONS
+                     when :safari, :safari_technology_preview
+                       Safari::Driver::EXTENSIONS
+                     else
+                       []
+                     end
+        extensions.each { |extension| extend extension }
+      end
     end # Driver
   end # WebDriver
 end # Selenium

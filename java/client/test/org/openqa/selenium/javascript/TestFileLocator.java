@@ -17,21 +17,23 @@
 
 package org.openqa.selenium.javascript;
 
-import com.google.common.base.Function;
-import com.google.common.base.Splitter;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
+import static java.lang.System.getProperty;
+import static java.util.Collections.emptySet;
 
-import org.openqa.selenium.testing.InProject;
+import com.google.common.base.Splitter;
+
+import org.openqa.selenium.build.InProject;
+import org.openqa.selenium.internal.Require;
 
 import java.io.File;
-import java.io.FilenameFilter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static java.lang.System.getProperty;
 
 /**
  * Builder for test suites that run JavaScript tests.
@@ -41,60 +43,64 @@ class TestFileLocator {
   private static final String TEST_DIRECTORY_PROPERTY = "js.test.dir";
   private static final String TEST_EXCLUDES_PROPERTY = "js.test.excludes";
 
-  public static List<File> findTestFiles() {
-    File directory = getTestDirectory();
-    FilenameFilter filter = new TestFilenameFilter(getExcludedFiles(directory));
-    return findTestFiles(directory, filter);
+  public static List<Path> findTestFiles() throws IOException {
+    Path directory = getTestDirectory();
+    Set<Path> excludedFiles = getExcludedFiles(directory);
+    return findTestFiles(directory, excludedFiles);
   }
 
-  private static List<File> findTestFiles(File directory, FilenameFilter filter) {
-    List<File> files = Lists.newLinkedList();
-    File[] list = directory.listFiles();
-    if (list != null) {
-      for (File file : list) {
-        if (file.isDirectory()) {
-          files.addAll(findTestFiles(file, filter));
-        } else if (filter.accept(file.getParentFile(), file.getName())) {
-          files.add(file);
-        }
-      }
+  private static List<Path> findTestFiles(Path directory, Set<Path> excludedFiles)
+    throws IOException {
+    return Files.find(
+      directory,
+      Integer.MAX_VALUE,
+      (path, basicFileAttributes) -> {
+        String name = path.getFileName().toString();
+        return name.endsWith("_test.html");
+        // TODO: revive support for _test.js files.
+//        Path sibling = path.resolveSibling(name.replace(".js", ".html"));
+//        return name.endsWith("_test.html")
+//               || (name.endsWith("_test.js") && !Files.exists(sibling));
+      })
+      .filter(path -> !excludedFiles.contains(path))
+      .collect(Collectors.toList());
+  }
+
+  private static Path getTestDirectory() {
+    String testDirName = Require.state("Test directory", getProperty(TEST_DIRECTORY_PROPERTY)).nonNull(
+                                 "You must specify the test directory with the %s system property",
+                                 TEST_DIRECTORY_PROPERTY);
+    
+    Path runfiles = InProject.findRunfilesRoot();
+    Path testDir;
+    if (runfiles != null) {
+      // Running with bazel.
+      testDir = runfiles.resolve("selenium").resolve(testDirName);
+    } else {
+      // Legacy.
+      testDir = InProject.locate(testDirName);
     }
-    return files;
-  }
 
-  private static File getTestDirectory() {
-    String testDirName = checkNotNull(getProperty(TEST_DIRECTORY_PROPERTY),
-        "You must specify the test directory with the %s system property",
-        TEST_DIRECTORY_PROPERTY);
-
-    File testDir = InProject.locate(testDirName);
-    checkArgument(testDir.exists(), "Test directory does not exist: %s",
-        testDirName);
-    checkArgument(testDir.isDirectory());
+    Require.state("Test directory", testDir.toFile()).isDirectory();
 
     return testDir;
   }
 
-  private static ImmutableSet<File> getExcludedFiles(final File testDirectory) {
+  private static Set<Path> getExcludedFiles(final Path testDirectory) {
     String excludedFiles = getProperty(TEST_EXCLUDES_PROPERTY);
     if (excludedFiles == null) {
-      return ImmutableSet.of();
+      return emptySet();
     }
 
-    Iterable<String> splitExcludes =
-        Splitter.on(',').omitEmptyStrings().split(excludedFiles);
+    Iterable<String> splitExcludes = Splitter.on(',').omitEmptyStrings().split(excludedFiles);
 
-    return ImmutableSet.copyOf(Iterables.transform(splitExcludes,
-        new Function<String, File>() {
-          public File apply(String input) {
-            return new File(testDirectory, input);
-          }
-        }));
+    return StreamSupport.stream(splitExcludes.spliterator(), false)
+        .map(testDirectory::resolve).collect(Collectors.toSet());
   }
 
-  public static String getTestFilePath(File baseDir, File testFile) {
-    String path = testFile.getAbsolutePath()
-        .replace(baseDir.getAbsolutePath() + File.separator, "")
+  public static String getTestFilePath(Path baseDir, Path testFile) {
+    String path = testFile.toAbsolutePath().toString()
+        .replace(baseDir.toAbsolutePath().toString() + File.separator, "")
         .replace(File.separator, "/");
     if (path.endsWith(".js")) {
       path = "common/generated/" + path;

@@ -1,4 +1,4 @@
-﻿// <copyright file="ReturnedCookie.cs" company="WebDriver Committers">
+// <copyright file="ReturnedCookie.cs" company="WebDriver Committers">
 // Licensed to the Software Freedom Conservancy (SFC) under one
 // or more contributor license agreements. See the NOTICE file
 // distributed with this work for additional information
@@ -17,10 +17,7 @@
 // </copyright>
 
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Net.Sockets;
-using System.Text;
 
 namespace OpenQA.Selenium.Internal
 {
@@ -33,7 +30,7 @@ namespace OpenQA.Selenium.Internal
         private bool isHttpOnly;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ReturnedCookie"/> class with a specific name, 
+        /// Initializes a new instance of the <see cref="ReturnedCookie"/> class with a specific name,
         /// value, domain, path and expiration date.
         /// </summary>
         /// <param name="name">The name of the cookie.</param>
@@ -47,10 +44,31 @@ namespace OpenQA.Selenium.Internal
         /// or if it contains a semi-colon.</exception>
         /// <exception cref="ArgumentNullException">If the value or currentUrl is <see langword="null"/>.</exception>
         public ReturnedCookie(string name, string value, string domain, string path, DateTime? expiry, bool isSecure, bool isHttpOnly)
+            : this(name, value, domain, path, expiry, isSecure, isHttpOnly, null)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ReturnedCookie"/> class with a specific name,
+        /// value, domain, path and expiration date.
+        /// </summary>
+        /// <param name="name">The name of the cookie.</param>
+        /// <param name="value">The value of the cookie.</param>
+        /// <param name="domain">The domain of the cookie.</param>
+        /// <param name="path">The path of the cookie.</param>
+        /// <param name="expiry">The expiration date of the cookie.</param>
+        /// <param name="isSecure"><see langword="true"/> if the cookie is secure; otherwise <see langword="false"/></param>
+        /// <param name="isHttpOnly"><see langword="true"/> if the cookie is an HTTP-only cookie; otherwise <see langword="false"/></param>
+        /// <param name="sameSite">The SameSite value of cookie.</param>
+        /// <exception cref="ArgumentException">If the name is <see langword="null"/> or an empty string,
+        /// or if it contains a semi-colon.</exception>
+        /// <exception cref="ArgumentNullException">If the value or currentUrl is <see langword="null"/>.</exception>
+        public ReturnedCookie(string name, string value, string domain, string path, DateTime? expiry, bool isSecure, bool isHttpOnly, string sameSite)
             : base(name, value, domain, path, expiry)
         {
             this.isSecure = isSecure;
             this.isHttpOnly = isHttpOnly;
+            this.SameSite = sameSite;
         }
 
         /// <summary>
@@ -70,7 +88,7 @@ namespace OpenQA.Selenium.Internal
         }
 
         /// <summary>
-        /// Creates and returns a string representation of the current cookie. 
+        /// Creates and returns a string representation of the current cookie.
         /// </summary>
         /// <returns>A string representation of the current cookie.</returns>
         public override string ToString()

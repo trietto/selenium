@@ -19,6 +19,7 @@
 The Desired Capabilities implementation.
 """
 
+
 class DesiredCapabilities(object):
     """
     Set of default supported desired capabilities.
@@ -26,8 +27,7 @@ class DesiredCapabilities(object):
     Use this as a starting point for creating a desired capabilities object for
     requesting remote webdrivers for connecting to selenium server or selenium grid.
 
-
-    Usage Example:
+    Usage Example::
 
         from selenium import webdriver
 
@@ -49,44 +49,38 @@ class DesiredCapabilities(object):
 
     FIREFOX = {
         "browserName": "firefox",
-        "version": "",
-        "platform": "ANY",
-        "javascriptEnabled": True,
-        "marionette": False,
+        "acceptInsecureCerts": True,
+        "moz:debuggerAddress": True,
     }
 
     INTERNETEXPLORER = {
         "browserName": "internet explorer",
         "version": "",
         "platform": "WINDOWS",
-        "javascriptEnabled": True,
     }
 
     EDGE = {
         "browserName": "MicrosoftEdge",
         "version": "",
-        "platform": "WINDOWS"
+        "platform": "ANY"
     }
 
     CHROME = {
         "browserName": "chrome",
         "version": "",
         "platform": "ANY",
-        "javascriptEnabled": True,
     }
 
     OPERA = {
         "browserName": "opera",
         "version": "",
         "platform": "ANY",
-        "javascriptEnabled": True,
     }
 
     SAFARI = {
         "browserName": "safari",
         "version": "",
-        "platform": "ANY",
-        "javascriptEnabled": True,
+        "platform": "MAC",
     }
 
     HTMLUNIT = {
@@ -106,26 +100,22 @@ class DesiredCapabilities(object):
         "browserName": "iPhone",
         "version": "",
         "platform": "MAC",
-        "javascriptEnabled": True,
     }
 
     IPAD = {
         "browserName": "iPad",
         "version": "",
         "platform": "MAC",
-        "javascriptEnabled": True,
     }
 
-    ANDROID = {
-        "browserName": "android",
-        "version": "",
-        "platform": "ANDROID",
-        "javascriptEnabled": True,
-    }
-
-    PHANTOMJS = {
-        "browserName":"phantomjs",
+    WEBKITGTK = {
+        "browserName": "MiniBrowser",
         "version": "",
         "platform": "ANY",
-        "javascriptEnabled": True,
+    }
+
+    WPEWEBKIT = {
+        "browserName": "MiniBrowser",
+        "version": "",
+        "platform": "ANY",
     }

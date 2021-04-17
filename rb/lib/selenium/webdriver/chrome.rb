@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -19,16 +19,27 @@
 
 require 'net/http'
 
-require 'selenium/webdriver/chrome/service'
-require 'selenium/webdriver/chrome/bridge'
-require 'selenium/webdriver/chrome/profile'
-
 module Selenium
   module WebDriver
-
     module Chrome
+      autoload :Features, 'selenium/webdriver/chrome/features'
+      autoload :Driver, 'selenium/webdriver/chrome/driver'
+      autoload :Profile, 'selenium/webdriver/chrome/profile'
+      autoload :Options, 'selenium/webdriver/chrome/options'
+      autoload :Service, 'selenium/webdriver/chrome/service'
+
       def self.driver_path=(path)
-        Service.executable_path = path
+        WebDriver.logger.deprecate 'Selenium::WebDriver::Chrome#driver_path=',
+                                   'Selenium::WebDriver::Chrome::Service#driver_path=',
+                                   id: :driver_path
+        Selenium::WebDriver::Chrome::Service.driver_path = path
+      end
+
+      def self.driver_path
+        WebDriver.logger.deprecate 'Selenium::WebDriver::Chrome#driver_path',
+                                   'Selenium::WebDriver::Chrome::Service#driver_path',
+                                   id: :driver_path
+        Selenium::WebDriver::Chrome::Service.driver_path
       end
 
       def self.path=(path)
@@ -39,7 +50,6 @@ module Selenium
       def self.path
         @path ||= nil
       end
-
     end # Chrome
   end # WebDriver
 end # Selenium

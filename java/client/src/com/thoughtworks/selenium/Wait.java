@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 package com.thoughtworks.selenium;
 
 /**
@@ -44,7 +43,7 @@ public abstract class Wait {
     wait(messageToShowIfTimeout, DEFAULT_TIMEOUT, DEFAULT_INTERVAL);
   }
 
-  /** Returns true when it's time to stop waiting */
+  /** @return true when it's time to stop waiting */
   public abstract boolean until();
 
   /** The amount of time to wait before giving up; the default is 30 seconds */
@@ -99,7 +98,7 @@ public abstract class Wait {
     throw new WaitTimedOutException(message);
   }
 
-  public class WaitTimedOutException extends RuntimeException {
+  public static class WaitTimedOutException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 

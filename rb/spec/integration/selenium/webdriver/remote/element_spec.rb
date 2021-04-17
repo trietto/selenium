@@ -1,5 +1,5 @@
-# encoding: utf-8
-#
+# frozen_string_literal: true
+
 # Licensed to the Software Freedom Conservancy (SFC) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -17,27 +17,48 @@
 # specific language governing permissions and limitations
 # under the License.
 
+require_relative '../spec_helper'
+
 module Selenium
   module WebDriver
-    describe Element do
+    describe Element, exclusive: {driver: :remote} do
       before do
-        driver.file_detector = lambda { |str| __FILE__ }
+        driver.file_detector = ->(filename) { File.join(__dir__, filename) }
       end
 
       after do
         driver.file_detector = nil
       end
 
-      not_compliant_on :browser => :phantomjs do
-        it "uses the file detector" do
-          driver.navigate.to url_for("upload.html")
+      context 'when uploading one file' do
+        it 'uses the file detector' do
+          driver.navigate.to url_for('upload.html')
 
-          driver.find_element(:id => "upload").send_keys("random string")
-          driver.find_element(:id => "go").submit
+          driver.find_element(id: 'upload').send_keys('element_spec.rb')
+          driver.find_element(id: 'go').submit
+          wait.until { driver.find_element(id: 'upload_label').displayed? }
 
-          driver.switch_to.frame("upload_target")
-          body = driver.find_element(:xpath => "//body")
-          body.text.should include("uses the set file detector")
+          driver.switch_to.frame('upload_target')
+          wait.until { driver.find_element(xpath: '//body') }
+
+          body = driver.find_element(xpath: '//body')
+          expect(body.text.scan('Licensed to the Software Freedom Conservancy').count).to eq(3)
+        end
+      end
+
+      context 'when uploading multiple files' do
+        it 'uses the file detector' do
+          driver.navigate.to url_for('upload_multiple.html')
+
+          driver.find_element(id: 'upload').send_keys("driver_spec.rb\nelement_spec.rb")
+          driver.find_element(id: 'go').submit
+          wait.until { driver.find_element(id: 'upload_label').displayed? }
+
+          driver.switch_to.frame('upload_target')
+          wait.until { driver.find_element(xpath: '//body') }
+
+          body = driver.find_element(xpath: '//body')
+          expect(body.text.scan('Licensed to the Software Freedom Conservancy').count).to eq(4)
         end
       end
     end

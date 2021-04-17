@@ -19,6 +19,7 @@
 The Alert implementation.
 """
 
+from selenium.webdriver.common.utils import keys_to_typing
 from selenium.webdriver.remote.command import Command
 
 
@@ -62,13 +63,13 @@ class Alert(object):
         """
         Gets the text of the Alert.
         """
-        return self.driver.execute(Command.GET_ALERT_TEXT)["value"]
+        return self.driver.execute(Command.W3C_GET_ALERT_TEXT)["value"]
 
     def dismiss(self):
         """
         Dismisses the alert available.
         """
-        self.driver.execute(Command.DISMISS_ALERT)
+        self.driver.execute(Command.W3C_DISMISS_ALERT)
 
     def accept(self):
         """
@@ -77,7 +78,7 @@ class Alert(object):
         Usage::
         Alert(driver).accept() # Confirm a alert dialog.
         """
-        self.driver.execute(Command.ACCEPT_ALERT)
+        self.driver.execute(Command.W3C_ACCEPT_ALERT)
 
     def send_keys(self, keysToSend):
         """
@@ -85,22 +86,5 @@ class Alert(object):
 
         :Args:
          - keysToSend: The text to be sent to Alert.
-
-
         """
-        self.driver.execute(Command.SET_ALERT_VALUE, {'text': keysToSend})
-
-    def authenticate(self, username, password):
-        """
-        Send the username / password to an Authenticated dialog (like with Basic HTTP Auth).
-        Implicitly 'clicks ok'
-
-        Usage::
-        driver.switch_to.alert.authenticate('cheese', 'secretGouda')
-
-        :Args:
-         -username: string to be set in the username section of the dialog
-         -password: string to be set in the password section of the dialog
-        """
-        self.driver.execute(Command.SET_ALERT_CREDENTIALS, {'username':username, 'password':password})
-        self.accept()
+        self.driver.execute(Command.W3C_SET_ALERT_VALUE, {'value': keys_to_typing(keysToSend), 'text': keysToSend})
